@@ -1,6 +1,7 @@
 plugins {
-    id("com.android.application")
-    id("kotlin-android")
+    id("com.android.application")
+    id("kotlin-android")
+    id("tachiyomi.extension")
 }
 
 // --- Extension metadata -----------------------------------------------
@@ -10,41 +11,42 @@ val extVersionCode = 1
 val isNsfw = false
 // ------------------------------------------------------------------------
 
-val libVersion: String by rootProject.extra.properties.withDefault { "1.5" }
+val libVersion: String by rootProject.extra.properties.withDefault { "1.4" }
 
 android {
-    namespace = "eu.kanade.tachiyomi.extension.en.example"
-    compileSdk = 34
+    namespace = "eu.kanade.tachiyomi.extension.en.example"
+    compileSdk = 34
 
-    defaultConfig {
-        applicationId = "eu.kanade.tachiyomi.extension.en.example"
-        minSdk = 21
-        targetSdk = 34
-        versionCode = extVersionCode
-        versionName = "1.$extVersionCode"
+    defaultConfig {
+        applicationId = "eu.kanade.tachiyomi.extension.en.example"
+        minSdk = 21
+        targetSdk = 34
+        versionCode = extVersionCode
+        versionName = "1.$extVersionCode"
 
-        manifestPlaceholders["appName"] = "Tachiyomi: $extName"
-        manifestPlaceholders["extClass"] = extClass
-        manifestPlaceholders["nsfw"] = if (isNsfw) 1 else 0
-    }
+        manifestPlaceholders["appName"] = "Tachiyomi: $extName"
+        manifestPlaceholders["extClass"] = extClass
+        manifestPlaceholders["nsfw"] = if (isNsfw) 1 else 0
+    }
 
-    buildTypes {
-        getByName("release") {
-            isMinifyEnabled = false
-        }
-    }
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+        }
+    }
 
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
 }
 
 dependencies {
+    // Stub interfaces only
     compileOnly("com.github.mihonapp:extensions-lib:1.4")
 
     compileOnly("com.squareup.okhttp3:okhttp:4.12.0")
