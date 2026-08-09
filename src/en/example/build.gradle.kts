@@ -45,12 +45,11 @@ android {
 }
 
 dependencies {
-    // Stub interfaces only (HttpSource, SManga, SChapter, ...).
-    // The real implementations live inside Mihon/Aniyomi itself at runtime.
-    compileOnly("com.github.mihonapp:extensions-lib:${project.findProperty("libVersion") ?: "1.5"}")
+    // Stub interfaces only
+    compileOnly("com.github.mihonapp:tachiyomix:1.6")
 
     compileOnly("com.squareup.okhttp3:okhttp:4.12.0")
-    compileOnly("com.squareup.okio:okio:3.9.0")
+    compileOnly("com.okio:okio:3.9.0") // or com.squareup.okio:okio:3.9.0 depending on your setup
     compileOnly("org.jsoup:jsoup:1.17.2")
     compileOnly("com.google.code.gson:gson:2.10.1")
     compileOnly("app.cash.quickjs:quickjs-android:0.9.2")
