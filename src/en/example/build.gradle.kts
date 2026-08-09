@@ -50,8 +50,8 @@ android {
 
 dependencies {
     // Uses the standard local/shared repository dependency format compatible with the template structure
-    val libVersion = "1.4"
-    compileOnly("com.github.mihonapp:extensions-lib:$libVersion")
+    val libVersion = "v1.4"
+    compileOnly("com.github.mihonapp:tachiyomix:$libVersion")
 
     compileOnly("com.squareup.okhttp3:okhttp:4.12.0")
     compileOnly("com.squareup.okio:okio:3.9.0")
