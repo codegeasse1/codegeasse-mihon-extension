@@ -1,40 +1,47 @@
 plugins {
-    id("com.android.application")
-    id("kotlin-android")
-    id("tachiyomi.extension")
+    id("com.android.application")
+    id("kotlin-android")
 }
 
-val extName = "The Blank"
-val extClass = ".TheBlank"
+// --- Extension metadata -----------------------------------------------
+val extName = "Example"
+val extClass = ".Example"
 val extVersionCode = 1
-val isNsfw = true
+val isNsfw = false
+// ------------------------------------------------------------------------
+
+val libVersion: String by rootProject.extra.properties.withDefault { "1.5" }
 
 android {
-    namespace = "eu.kanade.tachiyomi.extension.en.theblankmanga"
-    compileSdk = 34
+    namespace = "eu.kanade.tachiyomi.extension.en.example"
+    compileSdk = 34
 
-    defaultConfig {
-        applicationId = "eu.kanade.tachiyomi.extension.en.theblankmanga"
-        minSdk = 21
-        targetSdk = 34
-        versionCode = extVersionCode
-        versionName = "1.$extVersionCode"
-    }
+    defaultConfig {
+        applicationId = "eu.kanade.tachiyomi.extension.en.example"
+        minSdk = 21
+        targetSdk = 34
+        versionCode = extVersionCode
+        versionName = "1.$extVersionCode"
 
-    buildTypes {
-        release {
-            isMinifyEnabled = false
-        }
-    }
+        manifestPlaceholders["appName"] = "Tachiyomi: $extName"
+        manifestPlaceholders["extClass"] = extClass
+        manifestPlaceholders["nsfw"] = if (isNsfw) 1 else 0
+    }
 
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+        }
+    }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
 }
 
 dependencies {
