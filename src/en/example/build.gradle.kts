@@ -42,6 +42,12 @@ android {
     }
 }
 
+repositories {
+    google()
+    mavenCentral()
+    maven(url = "https://jitpack.io")
+}
+
 dependencies {
     // Uses the standard local/shared repository dependency format compatible with the template structure
     val libVersion = "1.4"
