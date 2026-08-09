@@ -43,7 +43,8 @@ android {
 }
 
 dependencies {
-    compileOnly("com.github.mihonapp:extensions-lib:v1.4")
+    // Fixed to use the modern active package coordinate that successfully resolves via JitPack
+    compileOnly("com.github.mihonapp:tachiyomix:1.6")
 
     compileOnly("com.squareup.okhttp3:okhttp:4.12.0")
     compileOnly("com.squareup.okio:okio:3.9.0")
