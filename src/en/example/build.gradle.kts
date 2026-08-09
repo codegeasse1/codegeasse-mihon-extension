@@ -10,6 +10,12 @@ val extVersionCode = 1
 val isNsfw = false
 // ------------------------------------------------------------------------
 
+repositories {
+    google()
+    mavenCentral()
+    maven(url = "https://jitpack.io")
+}
+
 android {
     namespace = "eu.kanade.tachiyomi.extension.en.example"
     compileSdk = 34
@@ -40,12 +46,6 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
-}
-
-repositories {
-    google()
-    mavenCentral()
-    maven(url = "https://jitpack.io")
 }
 
 dependencies {
