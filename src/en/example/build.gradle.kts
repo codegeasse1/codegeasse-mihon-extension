@@ -1,7 +1,6 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    id("tachiyomi.extension")
 }
 
 // --- Extension metadata -----------------------------------------------
@@ -10,8 +9,6 @@ val extClass = ".Example"
 val extVersionCode = 1
 val isNsfw = false
 // ------------------------------------------------------------------------
-
-val libVersion: String by rootProject.extra.properties.withDefault { "1.4" }
 
 android {
     namespace = "eu.kanade.tachiyomi.extension.en.example"
@@ -46,8 +43,7 @@ android {
 }
 
 dependencies {
-    // Stub interfaces only
-    compileOnly("com.github.mihonapp:extensions-lib:1.4")
+    compileOnly("com.github.mihonapp:extensions-lib:1.4.4")
 
     compileOnly("com.squareup.okhttp3:okhttp:4.12.0")
     compileOnly("com.squareup.okio:okio:3.9.0")
