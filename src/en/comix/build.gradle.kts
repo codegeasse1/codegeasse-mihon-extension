@@ -4,9 +4,9 @@ plugins {
 }
 
 // --- Extension metadata -----------------------------------------------
-val extName = "Codegeasse Comix" // 👈 Changed to your unique name
+val extName = "Codegeasse Comix" 
 val extClass = ".Comix"
-val extVersionCode = 1 // Reset back to 1 since this is a brand new extension
+val extVersionCode = 2 // 👈 Bumped to 2 to force Mihon to update
 val isNsfw = false
 // ------------------------------------------------------------------------
 
@@ -18,7 +18,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        // 👇 This is the crucial fingerprint change that separates it from Keiyoushi
+        // This unique fingerprint separates it from Keiyoushi
         applicationId = "eu.kanade.tachiyomi.extension.en.codegeassecomix" 
         minSdk = 21
         targetSdk = 34
