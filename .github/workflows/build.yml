@@ -79,63 +79,81 @@ jobs:
           mkdir -p repo/apk
           mkdir -p repo/icon
           for ext_dir in src/*/*/; do
-            ext_name=$(basename "$ext_dir")
-            cp "$ext_dir/build/outputs/apk/release/"*.apk "repo/apk/${ext_name}-release.apk" || true
-            cp "$ext_dir/src/main/res/mipmap-xxxhdpi/ic_launcher.png" "repo/icon/${ext_name}.png" || true
+            if [ -d "$ext_dir" ]; then
+              ext_name=$(basename "$ext_dir")
+              cp "$ext_dir/build/outputs/apk/release/"*.apk "repo/apk/${ext_name}-release.apk" || true
+              cp "$ext_dir/src/main/res/mipmap-xxxhdpi/ic_launcher.png" "repo/icon/${ext_name}.png" || true
+            fi
           done
-          ls -la repo/apk
-          ls -la repo/icon
 
       - name: Generate index.min.json and repo.json automatically
         run: |
           python3 -c "
-          import os, re, json, hashlib
+          import os, re, json, hashlib, struct
+          
+          # This replicates Tachiyomi/Mihon's exact Java 64-bit ID generation
+          def generate_id(name, lang, version_id=1):
+              key = f'{lang}/{name}/{version_id}'.encode('utf-8')
+              md5_bytes = hashlib.md5(key).digest()
+              return struct.unpack('>q', md5_bytes[:8])[0]
+
           repo = os.environ['GITHUB_REPOSITORY']
           url_base = f'https://raw.githubusercontent.com/{repo}/repo'
           index = []
-          for lang in os.listdir('src'):
-              lang_path = os.path.join('src', lang)
-              if not os.path.isdir(lang_path): continue
-              for ext in os.listdir(lang_path):
-                  ext_path = os.path.join(lang_path, ext)
-                  if not os.path.isdir(ext_path): continue
-                  gradle = os.path.join(ext_path, 'build.gradle.kts')
-                  if not os.path.exists(gradle): continue
-                  gc = open(gradle).read()
-                  name = re.search(r'val extName\s*=\s*\"([^\"]+)\"', gc)
-                  code = re.search(r'val extVersionCode\s*=\s*(\d+)', gc)
-                  nsfw = re.search(r'val isNsfw\s*=\s*(true|false)', gc)
-                  pkg = re.search(r'applicationId\s*=\s*\"([^\"]+)\"', gc)
-                  if not all([name, code, nsfw, pkg]): continue
-                  
-                  code_val = code.group(1)
-                  
-                  kt_path = next((os.path.join(r, f) for r,_,fs in os.walk(os.path.join(ext_path, 'src/main/kotlin')) for f in fs if f.endswith('.kt')), None)
-                  kt = open(kt_path).read() if kt_path else ''
-                  b_url = re.search(r'override val baseUrl\s*=\s*\"([^\"]+)\"', kt)
-                  src_id = int(hashlib.md5(pkg.group(1).encode()).hexdigest()[:8], 16)
-                  
-                  index.append({
-                      'name': name.group(1), 'pkg': pkg.group(1),
-                      'apk': f'{url_base}/apk/{ext}-release.apk', 'lang': lang,
-                      'code': int(code_val), 
-                      'version': '1.4',
-                      'nsfw': 2 if nsfw.group(1)=='true' else 0,
-                      'hasReadme':0,'hasChangelog':0,
-                      'icon': f'{url_base}/icon/{ext}.png',
-                      'sources':[{'id':src_id,'lang':lang,'name':name.group(1),'baseUrl':b_url.group(1) if b_url else '','versionId':1}]
-                  })
-          with open('repo/index.min.json','w') as f: json.dump(index,f,separators=(',',':'))
-          with open('repo/repo.json','w') as f: json.dump(index,f,separators=(',',':'))
+          
+          if os.path.exists('src'):
+              for lang in os.listdir('src'):
+                  lang_path = os.path.join('src', lang)
+                  if not os.path.isdir(lang_path): continue
+                  for ext in os.listdir(lang_path):
+                      ext_path = os.path.join(lang_path, ext)
+                      if not os.path.isdir(ext_path): continue
+                      gradle = os.path.join(ext_path, 'build.gradle.kts')
+                      if not os.path.exists(gradle): continue
+                      
+                      gc = open(gradle).read()
+                      name_match = re.search(r'val extName\s*=\s*\"([^\"]+)\"', gc)
+                      code_match = re.search(r'val extVersionCode\s*=\s*(\d+)', gc)
+                      nsfw_match = re.search(r'val isNsfw\s*=\s*(true|false)', gc)
+                      pkg_match = re.search(r'applicationId\s*=\s*\"([^\"]+)\"', gc)
+                      
+                      if not all([name_match, code_match, nsfw_match, pkg_match]): continue
+                      
+                      name = name_match.group(1)
+                      code_val = int(code_match.group(1))
+                      nsfw_val = 2 if nsfw_match.group(1) == 'true' else 0
+                      pkg = pkg_match.group(1)
+                      
+                      kt_path = next((os.path.join(r, f) for r,_,fs in os.walk(os.path.join(ext_path, 'src/main/kotlin')) for f in fs if f.endswith('.kt')), None)
+                      kt = open(kt_path).read() if kt_path else ''
+                      b_url = re.search(r'override val baseUrl\s*=\s*\"([^\"]+)\"', kt)
+                      base_url_val = b_url.group(1) if b_url else ''
+                      
+                      # Call the exact ID generator
+                      src_id = generate_id(name, lang)
+                      
+                      index.append({
+                          'name': name,
+                          'pkg': pkg,
+                          'apk': f'{url_base}/apk/{ext}-release.apk',
+                          'lang': lang,
+                          'code': code_val,
+                          'version': f'1.{code_val}',
+                          'nsfw': nsfw_val,
+                          'hasReadme': 0,
+                          'hasChangelog': 0,
+                          'icon': f'{url_base}/icon/{ext}.png',
+                          'sources': [{'id': src_id, 'lang': lang, 'name': name, 'baseUrl': base_url_val, 'versionId': 1}]
+                      })
+                      
+          with open('repo/index.min.json', 'w') as f: json.dump(index, f, separators=(',', ':'))
+          with open('repo/repo.json', 'w') as f: json.dump(index, f, separators=(',', ':'))
           "
           cat repo/index.min.json
 
       - name: Publish to repo branch
-        run: |
-          cd repo
-          git init -b repo
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "chore: publish extension repo"
-          git push --force https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:repo
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./repo
+          publish_branch: repo
