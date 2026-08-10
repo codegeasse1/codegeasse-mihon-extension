@@ -91,13 +91,13 @@ jobs:
           python3 -c "
           import os, re, json, hashlib, struct
           
-          # This replicates Tachiyomi/Mihon's exact Java 64-bit ID generation
+          # Tachiyomi/Mihon Math ID Generator
           def generate_id(name, lang, version_id=1):
               key = f'{lang}/{name}/{version_id}'.encode('utf-8')
               md5_bytes = hashlib.md5(key).digest()
               return struct.unpack('>q', md5_bytes[:8])[0]
 
-          repo = os.environ['GITHUB_REPOSITORY']
+          repo = os.environ.get('GITHUB_REPOSITORY', 'codegeasse1/codegeasse-mihon-extension')
           url_base = f'https://raw.githubusercontent.com/{repo}/repo'
           index = []
           
@@ -108,6 +108,7 @@ jobs:
                   for ext in os.listdir(lang_path):
                       ext_path = os.path.join(lang_path, ext)
                       if not os.path.isdir(ext_path): continue
+                      
                       gradle = os.path.join(ext_path, 'build.gradle.kts')
                       if not os.path.exists(gradle): continue
                       
@@ -117,20 +118,33 @@ jobs:
                       nsfw_match = re.search(r'val isNsfw\s*=\s*(true|false)', gc)
                       pkg_match = re.search(r'applicationId\s*=\s*\"([^\"]+)\"', gc)
                       
-                      if not all([name_match, code_match, nsfw_match, pkg_match]): continue
-                      
-                      name = name_match.group(1)
-                      code_val = int(code_match.group(1))
-                      nsfw_val = 2 if nsfw_match.group(1) == 'true' else 0
+                      if not pkg_match: 
+                          print(f'Skipping {ext}: No applicationId found in gradle.')
+                          continue
+                          
+                      name = name_match.group(1) if name_match else ext.capitalize()
+                      code_val = int(code_match.group(1)) if code_match else 1
+                      nsfw_val = 2 if (nsfw_match and nsfw_match.group(1) == 'true') else 0
                       pkg = pkg_match.group(1)
                       
-                      kt_path = next((os.path.join(r, f) for r,_,fs in os.walk(os.path.join(ext_path, 'src/main/kotlin')) for f in fs if f.endswith('.kt')), None)
-                      kt = open(kt_path).read() if kt_path else ''
-                      b_url = re.search(r'override val baseUrl\s*=\s*\"([^\"]+)\"', kt)
-                      base_url_val = b_url.group(1) if b_url else ''
+                      # Bulletproof scan of ALL Kotlin files to find baseUrl and custom IDs
+                      base_url_val = 'https://example.com'
+                      src_id = None
                       
-                      # Call the exact ID generator
-                      src_id = generate_id(name, lang)
+                      for r, _, fs in os.walk(os.path.join(ext_path, 'src/main/kotlin')):
+                          for f in fs:
+                              if f.endswith('.kt'):
+                                  content = open(os.path.join(r, f), encoding='utf-8').read()
+                                  b_match = re.search(r'override\s+val\s+baseUrl\s*=\s*\"([^\"]+)\"', content)
+                                  if b_match: base_url_val = b_match.group(1)
+                                  
+                                  id_match = re.search(r'override\s+val\s+id[^=]*=\s*(-?\d+)', content)
+                                  if id_match: src_id = int(id_match.group(1))
+
+                      if src_id is None:
+                          src_id = generate_id(name, lang)
+                          
+                      print(f'Successfully parsed {name} (ID: {src_id}, BaseURL: {base_url_val})')
                       
                       index.append({
                           'name': name,
@@ -138,7 +152,7 @@ jobs:
                           'apk': f'{url_base}/apk/{ext}-release.apk',
                           'lang': lang,
                           'code': code_val,
-                          'version': f'1.{code_val}',
+                          'version': f'1.4.{code_val}',
                           'nsfw': nsfw_val,
                           'hasReadme': 0,
                           'hasChangelog': 0,
@@ -148,6 +162,7 @@ jobs:
                       
           with open('repo/index.min.json', 'w') as f: json.dump(index, f, separators=(',', ':'))
           with open('repo/repo.json', 'w') as f: json.dump(index, f, separators=(',', ':'))
+          print(f'Done! Generated JSON array with {len(index)} extensions.')
           "
           cat repo/index.min.json
 
