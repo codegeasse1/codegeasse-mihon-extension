@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.util.asJsoup // <-- MISSING IMPORT ADDED HERE
 import okhttp3.Request
 import okhttp3.Response
 import org.json.JSONArray
@@ -16,28 +17,6 @@ import org.jsoup.nodes.Document
 
 /**
  * Comix (comix.to)
- *
- * The site is a client-hydrated SPA: every page embeds its initial API
- * response in a `<script type="application/json" id="initial-data">` tag
- * as a map of react-query cache keys -> results. Listing pages are parsed
- * straight out of that JSON rather than by scraping rendered HTML, since
- * the HTML itself is built client-side after load.
- *
- * Grounded in real captured markup: the homepage's initial-data payload
- * (popular/latest listings), a chapter-row link snippet
- * (`a.mchap-row__primary` / `span.mchap-row__ch`), and a reader-page image
- * snippet (`img.rpage-page__img`).
- *
- * NOT verified against real markup (only inferred) — check these before
- * relying on them:
- *  - The manga detail page's actual layout (mangaDetailsParse below reads
- *    OG meta tags as a safe fallback, but the real page likely has richer
- *    markup worth using instead).
- *  - Whether `/search?q=` is really the search route and whether it embeds
- *    initial-data the same way.
- *  - Pagination beyond page 1 for popular/latest — the homepage JSON only
- *    ever contains page 1. Page 2+ assumes `/?page=N` re-embeds fresh
- *    initial-data server-side, which is a guess, not a confirmed behavior.
  */
 class Comix : HttpSource() {
 
@@ -51,11 +30,6 @@ class Comix : HttpSource() {
 
     // ---- Shared: pull the embedded react-query cache out of a page -------
 
-    /**
-     * The initial-data script contains: {"page": "...", "queries": { "<json-key>": <result>, ... }}
-     * Keys are stringified arrays like ["manga","top",{"type":"trending",...}] — we don't try to
-     * parse them as JSON (quoting makes that awkward); we just substring-match on the raw key text.
-     */
     private fun queries(document: Document): JSONObject {
         val script = document.selectFirst("script#initial-data")
             ?: throw Exception("initial-data script not found - page structure may have changed")
@@ -69,7 +43,6 @@ class Comix : HttpSource() {
         return null
     }
 
-    /** Listing queries are either a bare JSON array, or {"items": [...], "meta": {...}}. */
     private fun asMangaArray(value: Any?): JSONArray = when (value) {
         is JSONArray -> value
         is JSONObject -> value.getJSONArray("items")
@@ -98,7 +71,6 @@ class Comix : HttpSource() {
         val q = queries(response.asJsoup())
         val list = asMangaArray(findQuery(q, "\"top\"", "\"trending\""))
         val mangas = (0 until list.length()).map { list.getJSONObject(it).toSManga() }
-        // The homepage embed is a fixed top-50 snapshot with no further pages.
         return MangasPage(mangas, false)
     }
 
@@ -118,8 +90,6 @@ class Comix : HttpSource() {
     }
 
     // ---- Search -------------------------------------------------------------
-    // UNVERIFIED: confirm the real search URL and that it embeds initial-data
-    // the same way before relying on this.
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request =
         GET("$baseUrl/search?q=$query&page=$page", headers)
@@ -137,20 +107,18 @@ class Comix : HttpSource() {
     override fun getFilterList(): FilterList = FilterList()
 
     // ---- Manga details --------------------------------------------------------
-    // UNVERIFIED beyond OG tags: the real detail page almost certainly has
-    // richer markup (genre tags, author, alt titles) worth switching to once
-    // you have a captured copy of that page's HTML.
 
-    override fun mangaDetailsParse(document: Document): SManga = SManga.create().apply {
-        title = document.selectFirst("meta[property=og:title]")?.attr("content").orEmpty()
-        description = document.selectFirst("meta[property=og:description]")?.attr("content")
-        thumbnail_url = document.selectFirst("meta[property=og:image]")?.attr("content")
+    // FIXED: Changed parameter from Document to Response, and converted it to Document inside.
+    override fun mangaDetailsParse(response: Response): SManga {
+        val document = response.asJsoup()
+        return SManga.create().apply {
+            title = document.selectFirst("meta[property=og:title]")?.attr("content").orEmpty()
+            description = document.selectFirst("meta[property=og:description]")?.attr("content")
+            thumbnail_url = document.selectFirst("meta[property=og:image]")?.attr("content")
+        }
     }
 
     // ---- Chapters ---------------------------------------------------------
-    // Grounded in the real snippet: <a class="mchap-row__primary" href="...">
-    //   <span class="mchap-row__ch">Ch.81</span>
-    // </a>
 
     override fun chapterListParse(response: Response): List<SChapter> {
         val document = response.asJsoup()
@@ -166,9 +134,6 @@ class Comix : HttpSource() {
     }
 
     // ---- Pages --------------------------------------------------------------
-    // Grounded in the real snippet: <img class="rpage-page__img" src="...">
-    // Unlike sites that render pages into a <canvas> or blob: URL, these are
-    // plain direct image URLs from a CDN, so no special handling is needed.
 
     override fun pageListParse(response: Response): List<Page> {
         val document = response.asJsoup()
