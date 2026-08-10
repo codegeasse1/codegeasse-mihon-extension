@@ -4,20 +4,22 @@ plugins {
 }
 
 // --- Extension metadata -----------------------------------------------
-val extName = "Comix"
+val extName = "Codegeasse Comix" // 👈 Changed to your unique name
 val extClass = ".Comix"
-val extVersionCode = 100 // 👈 Bumped to 100 to override Keiyoushi's version 34
+val extVersionCode = 1 // Reset back to 1 since this is a brand new extension
 val isNsfw = false
 // ------------------------------------------------------------------------
 
 val libVersion = (project.findProperty("libVersion") as String?) ?: "1.6.0"
 
 android {
+    // We leave the namespace alone so you don't have to rename your physical folders on your phone
     namespace = "eu.kanade.tachiyomi.extension.en.comix"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "eu.kanade.tachiyomi.extension.en.comix"
+        // 👇 This is the crucial fingerprint change that separates it from Keiyoushi
+        applicationId = "eu.kanade.tachiyomi.extension.en.codegeassecomix" 
         minSdk = 21
         targetSdk = 34
         versionCode = extVersionCode
