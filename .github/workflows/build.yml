@@ -91,12 +91,13 @@ jobs:
               "apk": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/apk/comix-release.apk",
               "lang": "en",
               "code": 1,
-              "version": "1.1",
+              "version": "1.4.1",
               "nsfw": 0,
               "hasReadme": 0,
               "hasChangelog": 0,
+              "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/comix.png",
               "sources": [
-                { "id": 1, "lang": "en", "name": "Comix", "baseUrl": "https://comix.to", "versionId": 1 }
+                { "id": 7102655201534291865, "lang": "en", "name": "Comix", "baseUrl": "https://comix.to", "versionId": 1 }
               ]
             },
             {
@@ -105,12 +106,13 @@ jobs:
               "apk": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/apk/example-release.apk",
               "lang": "en",
               "code": 1,
-              "version": "1.1",
+              "version": "1.4.1",
               "nsfw": 0,
               "hasReadme": 0,
               "hasChangelog": 0,
+              "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/example.png",
               "sources": [
-                { "id": 2, "lang": "en", "name": "Example", "baseUrl": "https://example.com", "versionId": 1 }
+                { "id": 4289163821097362431, "lang": "en", "name": "Example", "baseUrl": "https://example.com", "versionId": 1 }
               ]
             }
           ]
