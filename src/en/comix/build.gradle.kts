@@ -6,33 +6,31 @@ plugins {
 // --- Extension metadata -----------------------------------------------
 val extName = "Codegeasse Comix"
 val extClass = ".Comix"
-val extVersionCode = 5 // Bumped to 5 to force a clean update
+val extVersionCode = 5 
 val isNsfw = false
 // ------------------------------------------------------------------------
 
-// 🔥 FIXED: Downgraded to 1.4.4 for stable Mihon compatibility
-val libVersion = "1.4.4"
+// Pulls 1.6.0 from gradle.properties so JitPack doesn't crash
+val libVersion = (project.findProperty("libVersion") as String?) ?: "1.6.0"
 
 android {
-    // Keep namespace as comix so your physical folder structure doesn't break
     namespace = "eu.kanade.tachiyomi.extension.en.comix"
     compileSdk = 34
 
     defaultConfig {
-        // 🔥 FIXED: Unique ID so Keiyoushi doesn't overwrite it
         applicationId = "eu.kanade.tachiyomi.extension.en.codegeassecomix"
         minSdk = 21
         targetSdk = 34
         versionCode = extVersionCode
         
-        // Display version in the app
+        // 🔥 Forces the APK to say it is version 1.4.5
         versionName = "1.4.$extVersionCode" 
 
         manifestPlaceholders["appName"] = "Tachiyomi: $extName"
         manifestPlaceholders["extClass"] = extClass
         manifestPlaceholders["nsfw"] = if (isNsfw) 2 else 0
         
-        // 🔥 FIXED: Mihon strictly requires this exact string to load the APK!
+        // 🔥 Required by Mihon to load the APK
         manifestPlaceholders["libVersion"] = "1.4"
     }
 
