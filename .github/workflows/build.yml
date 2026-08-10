@@ -74,7 +74,6 @@ jobs:
           -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }}
           -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
 
-      # 1. DYNAMICALLY finds all extensions and copies their APKs + Icons
       - name: Collect APKs and Icons dynamically
         run: |
           mkdir -p repo/apk
@@ -87,7 +86,6 @@ jobs:
           ls -la repo/apk
           ls -la repo/icon
 
-      # 2. DYNAMICALLY reads your gradle/kotlin files and generates the exact JSON format
       - name: Generate index.min.json automatically
         run: |
           python3 -c "
@@ -113,7 +111,6 @@ jobs:
                   kt_path = next((os.path.join(r, f) for r,_,fs in os.walk(os.path.join(ext_path, 'src/main/kotlin')) for f in fs if f.endswith('.kt')), None)
                   kt = open(kt_path).read() if kt_path else ''
                   b_url = re.search(r'override val baseUrl\s*=\s*\"([^\"]+)\"', kt)
-                  # Generates a stable unique ID for the source based on the package name
                   src_id = int(hashlib.md5(pkg.group(1).encode()).hexdigest()[:8], 16)
                   index.append({
                       'name': name.group(1), 'pkg': pkg.group(1),
@@ -129,8 +126,11 @@ jobs:
           cat repo/index.min.json
 
       - name: Publish to repo branch
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./repo
-          publish_branch:
+        run: |
+          cd repo
+          git init -b repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: publish extension repo"
+          git push --force https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:repo
