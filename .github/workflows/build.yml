@@ -74,13 +74,18 @@ jobs:
           -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }}
           -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
 
-      - name: Collect APKs
+      - name: Collect APKs and Icons
         run: |
           mkdir -p repo/apk
-          # Force exact names to match your hardcoded index.min.json
+          mkdir -p repo/icon
+          # Force exact APK names to match your hardcoded index.min.json
           cp src/en/comix/build/outputs/apk/release/*.apk repo/apk/comix-release.apk
           cp src/en/example/build/outputs/apk/release/*.apk repo/apk/example-release.apk
+          # Publish the icons so the index "icon" URLs work
+          cp src/en/comix/src/main/res/mipmap-xxxhdpi/ic_launcher.png repo/icon/comix.png
+          cp src/en/example/src/main/res/mipmap-xxxhdpi/ic_launcher.png repo/icon/example.png
           ls -la repo/apk
+          ls -la repo/icon
 
       # Static, complete index in the exact format Keiyoushi/Mihon/Aniyomi expect.
       # When you update an extension, bump "code" and "version" here manually.
