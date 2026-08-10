@@ -74,98 +74,57 @@ jobs:
           -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }}
           -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
 
-      - name: Generate Index and Copy Files (Cache Busting)
+      - name: Collect APKs and Icons
         run: |
-          python3 -c "
-          import os, re, json, hashlib, struct, shutil
-          
-          # Tachiyomi/Mihon Math ID Generator
-          def generate_id(name, lang, version_id=1):
-              key = f'{lang}/{name}/{version_id}'.encode('utf-8')
-              md5_bytes = hashlib.md5(key).digest()
-              return struct.unpack('>q', md5_bytes[:8])[0]
+          mkdir -p repo/apk
+          mkdir -p repo/icon
+          # Force exact APK names to match your hardcoded index.min.json
+          cp src/en/comix/build/outputs/apk/release/*.apk repo/apk/comix-release.apk
+          cp src/en/example/build/outputs/apk/release/*.apk repo/apk/example-release.apk
+          # Publish the icons so the index "icon" URLs work
+          cp src/en/comix/src/main/res/mipmap-xxxhdpi/ic_launcher.png repo/icon/comix.png
+          cp src/en/example/src/main/res/mipmap-xxxhdpi/ic_launcher.png repo/icon/example.png
+          ls -la repo/apk
+          ls -la repo/icon
 
-          repo = os.environ.get('GITHUB_REPOSITORY', 'codegeasse1/codegeasse-mihon-extension')
-          url_base = f'https://raw.githubusercontent.com/{repo}/repo'
-          index = []
-          
-          os.makedirs('repo/apk', exist_ok=True)
-          os.makedirs('repo/icon', exist_ok=True)
-          
-          if os.path.exists('src'):
-              for lang in os.listdir('src'):
-                  lang_path = os.path.join('src', lang)
-                  if not os.path.isdir(lang_path): continue
-                  for ext in os.listdir(lang_path):
-                      ext_path = os.path.join(lang_path, ext)
-                      if not os.path.isdir(ext_path): continue
-                      
-                      gradle = os.path.join(ext_path, 'build.gradle.kts')
-                      if not os.path.exists(gradle): continue
-                      
-                      gc = open(gradle).read()
-                      name_match = re.search(r'val extName\s*=\s*\"([^\"]+)\"', gc)
-                      code_match = re.search(r'val extVersionCode\s*=\s*(\d+)', gc)
-                      nsfw_match = re.search(r'val isNsfw\s*=\s*(true|false)', gc)
-                      pkg_match = re.search(r'applicationId\s*=\s*\"([^\"]+)\"', gc)
-                      
-                      if not pkg_match: continue
-                          
-                      name = name_match.group(1) if name_match else ext.capitalize()
-                      code_val = int(code_match.group(1)) if code_match else 1
-                      nsfw_val = 2 if (nsfw_match and nsfw_match.group(1) == 'true') else 0
-                      pkg = pkg_match.group(1)
-                      
-                      # Bulletproof scan for baseUrl and ID
-                      base_url_val = 'https://example.com'
-                      src_id = None
-                      
-                      for r, _, fs in os.walk(os.path.join(ext_path, 'src/main/kotlin')):
-                          for f in fs:
-                              if f.endswith('.kt'):
-                                  content = open(os.path.join(r, f), encoding='utf-8').read()
-                                  b_match = re.search(r'override\s+val\s+baseUrl\s*=\s*\"([^\"]+)\"', content)
-                                  if b_match: base_url_val = b_match.group(1)
-                                  
-                                  id_match = re.search(r'override\s+val\s+id[^=]*=\s*(-?\d+)', content)
-                                  if id_match: src_id = int(id_match.group(1))
-
-                      if src_id is None:
-                          src_id = generate_id(name, lang)
-                          
-                      # File copying logic with Cache Busting
-                      apk_src_dir = os.path.join(ext_path, 'build', 'outputs', 'apk', 'release')
-                      icon_src = os.path.join(ext_path, 'src', 'main', 'res', 'mipmap-xxxhdpi', 'ic_launcher.png')
-                      
-                      apk_filename = f'{ext}-v{code_val}.apk'
-                      icon_filename = f'{ext}-v{code_val}.png'
-                      
-                      if os.path.exists(apk_src_dir):
-                          for f in os.listdir(apk_src_dir):
-                              if f.endswith('.apk'):
-                                  shutil.copy(os.path.join(apk_src_dir, f), os.path.join('repo', 'apk', apk_filename))
-                                  break
-                      
-                      if os.path.exists(icon_src):
-                          shutil.copy(icon_src, os.path.join('repo', 'icon', icon_filename))
-                          
-                      index.append({
-                          'name': name,
-                          'pkg': pkg,
-                          'apk': f'{url_base}/apk/{apk_filename}',
-                          'lang': lang,
-                          'code': code_val,
-                          'version': f'1.4.{code_val}',
-                          'nsfw': nsfw_val,
-                          'hasReadme': 0,
-                          'hasChangelog': 0,
-                          'icon': f'{url_base}/icon/{icon_filename}',
-                          'sources': [{'id': src_id, 'lang': lang, 'name': name, 'baseUrl': base_url_val, 'versionId': 1}]
-                      })
-                      
-          with open('repo/index.min.json', 'w') as f: json.dump(index, f, separators=(',', ':'))
-          with open('repo/repo.json', 'w') as f: json.dump(index, f, separators=(',', ':'))
-          "
+      # Static, complete index in the exact format Keiyoushi/Mihon/Aniyomi expect.
+      # When you update an extension, bump "code" and "version" here manually.
+      - name: Generate index.min.json
+        run: |
+          cat > repo/index.min.json <<'EOF'
+          [
+            {
+              "name": "Comix",
+              "pkg": "eu.kanade.tachiyomi.extension.en.comix",
+              "apk": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/apk/comix-v2.apk",
+              "lang": "en",
+              "code": 1,
+              "version": "1.4.3",
+              "nsfw": 0,
+              "hasReadme": 0,
+              "hasChangelog": 0,
+              "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/refs/heads/repo/icon/comix-v2.png",
+              "sources": [
+                { "id": 7102655201534291865, "lang": "en", "name": "Comix", "baseUrl": "https://comix.to", "versionId": 1 }
+              ]
+            },
+            {
+              "name": "Example",
+              "pkg": "eu.kanade.tachiyomi.extension.en.example",
+              "apk": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/apk/example-release.apk",
+              "lang": "en",
+              "code": 1,
+              "version": "1.4.1",
+              "nsfw": 0,
+              "hasReadme": 0,
+              "hasChangelog": 0,
+              "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/example.png",
+              "sources": [
+                { "id": 4289163821097362431, "lang": "en", "name": "Example", "baseUrl": "https://example.com", "versionId": 1 }
+              ]
+            }
+          ]
+          EOF
           cat repo/index.min.json
 
       - name: Publish to repo branch
