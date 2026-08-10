@@ -77,7 +77,10 @@ jobs:
       - name: Collect APKs
         run: |
           mkdir -p repo/apk
-          find . -path '*/build/outputs/apk/release/*.apk' -exec cp {} repo/apk/ \;
+          # Force exact names to match your hardcoded index.min.json
+          cp src/en/comix/build/outputs/apk/release/*.apk repo/apk/comix-release.apk
+          cp src/en/example/build/outputs/apk/release/*.apk repo/apk/example-release.apk
+          ls -la repo/apk
 
       # Static, complete index in the exact format Keiyoushi/Mihon/Aniyomi expect.
       # When you update an extension, bump "code" and "version" here manually.
