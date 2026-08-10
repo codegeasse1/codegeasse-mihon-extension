@@ -5,9 +5,12 @@ buildscript {
         maven(url = "https://jitpack.io")
     }
     dependencies {
-        classpath("com.android.tools.build:gradle:8.5.2")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24")
-    }
+    // Upgrade AGP to a newer version compatible with Kotlin 2.4+
+    classpath("com.android.tools.build:gradle:8.7.3") 
+    
+    // Upgrade Kotlin to 2.4.0 to match the metadata version of tachiyomix
+    classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.0") 
+}
 }
 
 allprojects {
