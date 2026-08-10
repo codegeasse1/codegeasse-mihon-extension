@@ -106,21 +106,20 @@ jobs:
                   code = re.search(r'val extVersionCode\s*=\s*(\d+)', gc)
                   nsfw = re.search(r'val isNsfw\s*=\s*(true|false)', gc)
                   pkg = re.search(r'applicationId\s*=\s*\"([^\"]+)\"', gc)
-                  ver = re.search(r'versionName\s*=\s*\"([^\"]+)\"', gc)
-                  if not all([name, code, nsfw, pkg, ver]): continue
+                  if not all([name, code, nsfw, pkg]): continue
                   
-                  # FIX: Handle Kotlin string interpolation for versionName
                   code_val = code.group(1)
-                  ver_val = ver.group(1).replace('\$extVersionCode', code_val).replace('\$versionCode', code_val)
                   
                   kt_path = next((os.path.join(r, f) for r,_,fs in os.walk(os.path.join(ext_path, 'src/main/kotlin')) for f in fs if f.endswith('.kt')), None)
                   kt = open(kt_path).read() if kt_path else ''
                   b_url = re.search(r'override val baseUrl\s*=\s*\"([^\"]+)\"', kt)
                   src_id = int(hashlib.md5(pkg.group(1).encode()).hexdigest()[:8], 16)
+                  
                   index.append({
                       'name': name.group(1), 'pkg': pkg.group(1),
                       'apk': f'{url_base}/apk/{ext}-release.apk', 'lang': lang,
-                      'code': int(code_val), 'version': ver_val,
+                      'code': int(code_val), 
+                      'version': '1.4',  # 👈 HARDCODED LIB VERSION! This is the fix.
                       'nsfw': 2 if nsfw.group(1)=='true' else 0,
                       'hasReadme':0,'hasChangelog':0,
                       'icon': f'{url_base}/icon/{ext}.png',
