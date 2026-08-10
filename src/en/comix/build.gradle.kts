@@ -4,32 +4,36 @@ plugins {
 }
 
 // --- Extension metadata -----------------------------------------------
-val extName = "Comix"
+val extName = "Codegeasse Comix"
 val extClass = ".Comix"
-val extVersionCode = 4
+val extVersionCode = 5 // Bumped to 5 to force a clean update
 val isNsfw = false
 // ------------------------------------------------------------------------
 
-val libVersion = (project.findProperty("libVersion") as String?) ?: "1.6"
+// 🔥 FIXED: Downgraded to 1.4.4 for stable Mihon compatibility
+val libVersion = "1.4.4"
 
 android {
+    // Keep namespace as comix so your physical folder structure doesn't break
     namespace = "eu.kanade.tachiyomi.extension.en.comix"
     compileSdk = 34
 
     defaultConfig {
-        // 🔥 FIXED: Was incorrectly set to en.example!
-        applicationId = "eu.kanade.tachiyomi.extension.en.comix"
+        // 🔥 FIXED: Unique ID so Keiyoushi doesn't overwrite it
+        applicationId = "eu.kanade.tachiyomi.extension.en.codegeassecomix"
         minSdk = 21
         targetSdk = 34
         versionCode = extVersionCode
         
-        // 🔥 Generates "1.6.4" to match the JSON exactly
-        versionName = "$libVersion.$extVersionCode" 
+        // Display version in the app
+        versionName = "1.4.$extVersionCode" 
 
         manifestPlaceholders["appName"] = "Tachiyomi: $extName"
         manifestPlaceholders["extClass"] = extClass
         manifestPlaceholders["nsfw"] = if (isNsfw) 2 else 0
-        manifestPlaceholders["libVersion"] = libVersion
+        
+        // 🔥 FIXED: Mihon strictly requires this exact string to load the APK!
+        manifestPlaceholders["libVersion"] = "1.4"
     }
 
     buildTypes {
