@@ -96,7 +96,10 @@ jobs:
             if [ -f "$apk" ]; then
               if [ $FIRST -eq 0 ]; then echo "," >> index.json; fi
               FIRST=0
-              BADGING=$("$AAPT" dump badging "$apk")
+              
+              # ADDED '|| true' HERE TO IGNORE THE MISSING ICON ERROR
+              BADGING=$("$AAPT" dump badging "$apk" || true)
+              
               PKG=$(echo "$BADGING" | grep "^package: name=" | cut -d"'" -f2)
               CODE=$(echo "$BADGING" | grep "^package: name=" | cut -d"'" -f4)
               VERSION=$(echo "$BADGING" | grep "^package: name=" | cut -d"'" -f6)
@@ -113,10 +116,3 @@ jobs:
           jq -c . < index.json > index.min.json
           rm index.json
           cat index.min.json
-
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./repo
-          publish_branch: repo
