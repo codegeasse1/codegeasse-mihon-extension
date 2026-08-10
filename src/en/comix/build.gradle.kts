@@ -6,7 +6,7 @@ plugins {
 // --- Extension metadata -----------------------------------------------
 val extName = "Comix"
 val extClass = ".Comix"
-val extVersionCode = 4
+val extVersionCode = 100 // 👈 Bumped to 100 to override Keiyoushi's version 34
 val isNsfw = false
 // ------------------------------------------------------------------------
 
@@ -42,11 +42,12 @@ android {
     }
 }
 
-    kotlin {
+kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
+
 dependencies {
     compileOnly("com.github.mihonapp:tachiyomix:$libVersion")
 
