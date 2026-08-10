@@ -86,7 +86,7 @@ jobs:
           ls -la repo/apk
           ls -la repo/icon
 
-      - name: Generate index.min.json automatically
+      - name: Generate index.min.json and repo.json automatically
         run: |
           python3 -c "
           import os, re, json, hashlib
@@ -119,13 +119,14 @@ jobs:
                       'name': name.group(1), 'pkg': pkg.group(1),
                       'apk': f'{url_base}/apk/{ext}-release.apk', 'lang': lang,
                       'code': int(code_val), 
-                      'version': '1.4',  # 👈 HARDCODED LIB VERSION! This is the fix.
+                      'version': '1.4',
                       'nsfw': 2 if nsfw.group(1)=='true' else 0,
                       'hasReadme':0,'hasChangelog':0,
                       'icon': f'{url_base}/icon/{ext}.png',
                       'sources':[{'id':src_id,'lang':lang,'name':name.group(1),'baseUrl':b_url.group(1) if b_url else '','versionId':1}]
                   })
           with open('repo/index.min.json','w') as f: json.dump(index,f,separators=(',',':'))
+          with open('repo/repo.json','w') as f: json.dump(index,f,separators=(',',':'))
           "
           cat repo/index.min.json
 
