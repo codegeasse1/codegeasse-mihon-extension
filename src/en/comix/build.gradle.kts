@@ -4,9 +4,9 @@ plugins {
 }
 
 // --- Extension metadata -----------------------------------------------
-val extName = "Codegeasse Comix"
+val extName = "Comix"
 val extClass = ".Comix"
-val extVersionCode = 6
+val extVersionCode = 4
 val isNsfw = false
 // ------------------------------------------------------------------------
 
@@ -17,16 +17,17 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "eu.kanade.tachiyomi.extension.en.codegeassecomix"
+        applicationId = "eu.kanade.tachiyomi.extension.en.comix"
         minSdk = 21
         targetSdk = 34
         versionCode = extVersionCode
-        versionName = "1.6.$extVersionCode"
+        versionName = "1.$extVersionCode"
 
-        manifestPlaceholders["appName"] = extName
+        manifestPlaceholders["appName"] = "Tachiyomi: $extName"
         manifestPlaceholders["extClass"] = extClass
+        // Content Rating per tachiyomix's manifest spec: 0 = Safe, 1 = Mixed, 2 = NSFW
         manifestPlaceholders["nsfw"] = if (isNsfw) 2 else 0
-        manifestPlaceholders["libVersion"] = "1.6"
+        manifestPlaceholders["libVersion"] = "1.4"
     }
 
     buildTypes {
