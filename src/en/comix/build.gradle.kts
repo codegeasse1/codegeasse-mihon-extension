@@ -6,7 +6,7 @@ plugins {
 // --- Extension metadata -----------------------------------------------
 val extName = "Codegeasse Comix" 
 val extClass = ".Comix"
-val extVersionCode = 2 // 👈 Bumped to 2 to force Mihon to update
+val extVersionCode = 3// 👈 Bumped to 2 to force Mihon to update
 val isNsfw = false
 // ------------------------------------------------------------------------
 
