@@ -86,7 +86,7 @@ jobs:
           ls -la repo/apk
           ls -la repo/icon
 
-      - name: Generate index.min.json automatically
+      - name: Generate index.min.json, index.json, and repo.json
         run: |
           python3 -c "
           import os, re, json, hashlib
@@ -129,16 +129,32 @@ jobs:
                       'apk': f'apk/{ext}-release.apk',
                       'lang': lang,
                       'code': int(code_val), 
-                      # 🔥 Generates "1.6.4" which exactly matches the APK versionName
                       'version': f'{lib_version}.{code_val}',  
                       'nsfw': 2 if nsfw.group(1)=='true' else 0,
                       'hasReadme':0,'hasChangelog':0,
                       'icon': f'icon/{ext}.png',
                       'sources':[{'id':src_id,'lang':lang,'name':name.group(1),'baseUrl':b_url.group(1) if b_url else '','versionId':1}]
                   })
+          
+          # 2. Write index.min.json (minified array of extensions)
           with open('repo/index.min.json','w') as f: json.dump(index,f,separators=(',',':'))
+          
+          # 3. Write index.json (unminified array, used by some forks)
+          with open('repo/index.json','w') as f: json.dump(index,f,indent=2)
+          
+          # 4. Write repo.json (Metadata file required by modern Mihon/Aniyomi)
+          repo_meta = {
+              'meta': {
+                  'name': 'CodeGeasse Extensions',
+                  'shortName': 'CG-EXT',
+                  'website': f'https://github.com/{repo}'
+              }
+          }
+          with open('repo/repo.json','w') as f: json.dump(repo_meta,f,indent=2)
           "
-          echo "--- GENERATED JSON ---"
+          echo "--- GENERATED repo.json ---"
+          cat repo/repo.json
+          echo "\n--- GENERATED index.min.json ---"
           cat repo/index.min.json
           echo "------------------------"
 
