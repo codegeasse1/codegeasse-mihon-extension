@@ -74,7 +74,7 @@ jobs:
           -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }}
           -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
 
-      - name: Collect APKs and Icons dynamically
+      - name: Collect APKs dynamically
         run: |
           mkdir -p repo/apk
           mkdir -p repo/icon
@@ -82,16 +82,13 @@ jobs:
             if [ -d "$ext_dir" ]; then
               ext_name=$(basename "$ext_dir")
               cp "$ext_dir/build/outputs/apk/release/"*.apk "repo/apk/${ext_name}-release.apk" || true
-              cp "$ext_dir/src/main/res/mipmap-xxxhdpi/ic_launcher.png" "repo/icon/${ext_name}.png" || true
             fi
           done
-          ls -la repo/apk
-          ls -la repo/icon
 
       - name: Generate index.min.json, index.json, and repo.json
         run: |
           python3 -c "
-          import os, re, json, hashlib, struct
+          import os, re, json, hashlib, struct, shutil
           
           def generate_id(name, lang, version_id=1):
               key = f'{lang}/{name}/{version_id}'.encode('utf-8')
@@ -130,6 +127,12 @@ jobs:
                   
                   src_id = generate_id(name_val, lang)
                   
+                  # CACHE BUSTING: Dynamically name the icon so Mihon always fetches the latest
+                  icon_src = os.path.join(ext_path, 'src', 'main', 'res', 'mipmap-xxxhdpi', 'ic_launcher.png')
+                  icon_filename = f'{ext}-v{code_val}.png'
+                  if os.path.exists(icon_src):
+                      shutil.copy(icon_src, os.path.join('repo', 'icon', icon_filename))
+                  
                   index.append({
                       'name': name_val,
                       'pkg': pkg_val,
@@ -139,7 +142,7 @@ jobs:
                       'version': f'1.4.{code_val}',  
                       'nsfw': 2 if nsfw_match.group(1)=='true' else 0,
                       'hasReadme': 0, 'hasChangelog': 0,
-                      'icon': f'{url_base}/icon/{ext}.png',
+                      'icon': f'{url_base}/icon/{icon_filename}',
                       'sources': [{'id': src_id, 'lang': lang, 'name': name_val, 'baseUrl': b_url_val, 'versionId': 1}]
                   })
           
