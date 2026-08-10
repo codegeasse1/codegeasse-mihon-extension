@@ -22,8 +22,6 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      # No committed Gradle wrapper jar is needed - this action provisions
-      # a real Gradle distribution and puts `gradle` on PATH.
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -39,16 +37,11 @@ jobs:
           path: '**/build/outputs/apk/**/*.apk'
           if-no-files-found: error
 
-  # Runs only on pushes to main, and only if `build` succeeded.
-  # Bundles the compiled APKs plus an index.min.json and publishes them
-  # to a `repo` branch, which can be added directly as a custom
-  # extension repo inside Mihon/Aniyomi.
   release:
     needs: build
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
 
-    # Write permissions are strictly required for the bot to push the repo branch
     permissions:
       contents: write
 
@@ -86,42 +79,44 @@ jobs:
           mkdir -p repo/apk
           find . -path '*/build/outputs/apk/release/*.apk' -exec cp {} repo/apk/ \;
 
+      # Static, complete index in the exact format Keiyoushi/Mihon/Aniyomi expect.
+      # When you update an extension, bump "code" and "version" here manually.
       - name: Generate index.min.json
         run: |
-          cd repo
-          AAPT2=$(ls -1d $ANDROID_HOME/build-tools/* | tail -n 1)/aapt2
-          BASE_URL="https://raw.githubusercontent.com/${{ github.repository }}/repo/apk"
-          echo "[" > index.json
-          FIRST=1
-          for apk in apk/*.apk; do
-            [ -f "$apk" ] || continue
-            if [ $FIRST -eq 0 ]; then echo "," >> index.json; fi
-            FIRST=0
+          cat > repo/index.min.json <<'EOF'
+          [
+            {
+              "name": "Comix",
+              "pkg": "eu.kanade.tachiyomi.extension.en.comix",
+              "apk": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/apk/comix-release.apk",
+              "lang": "en",
+              "code": 1,
+              "version": "1.1",
+              "nsfw": 0,
+              "hasReadme": 0,
+              "hasChangelog": 0,
+              "sources": [
+                { "id": 1, "lang": "en", "name": "Comix", "baseUrl": "https://comix.to", "versionId": 1 }
+              ]
+            },
+            {
+              "name": "Example",
+              "pkg": "eu.kanade.tachiyomi.extension.en.example",
+              "apk": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/apk/example-release.apk",
+              "lang": "en",
+              "code": 1,
+              "version": "1.1",
+              "nsfw": 0,
+              "hasReadme": 0,
+              "hasChangelog": 0,
+              "sources": [
+                { "id": 2, "lang": "en", "name": "Example", "baseUrl": "https://example.com", "versionId": 1 }
+              ]
+            }
+          ]
+          EOF
+          cat repo/index.min.json
 
-            BADGING=$("$AAPT2" dump badging "$apk" 2>/dev/null || true)
-
-            PKG=$(echo "$BADGING" | grep "^package: name=" | cut -d"'" -f2)
-            CODE=$(echo "$BADGING" | grep "^package: name=" | cut -d"'" -f4)
-            VERSION=$(echo "$BADGING" | grep "^package: name=" | cut -d"'" -f6)
-            NAME=$(echo "$BADGING" | grep "^application-label:" | head -n 1 | cut -d"'" -f2)
-            # Fallback if aapt can't read the label (icon error): derive from filename
-            if [ -z "$NAME" ]; then
-              NAME=$(basename "$apk" | sed 's/-release\.apk$//' | sed 's/^./\U&/')
-            fi
-            LANG=$(echo "$PKG" | cut -d'.' -f5)
-            NSFW=0
-            if echo "$BADGING" | grep -q "name='tachiyomi.extension.nsfw' value='2'"; then NSFW=2; fi
-            if echo "$BADGING" | grep -q "name='tachiyomi.extension.nsfw' value='1'"; then NSFW=1; fi
-            FILENAME=$(basename "$apk")
-
-            echo "{\"name\":\"$NAME\",\"pkg\":\"$PKG\",\"apk\":\"$BASE_URL/$FILENAME\",\"version\":\"$VERSION\",\"code\":$CODE,\"lang\":\"$LANG\",\"nsfw\":$NSFW,\"hasReadme\":0,\"hasChangelog\":0}" >> index.json
-          done
-          echo "]" >> index.json
-          jq -c . < index.json > index.min.json
-          rm index.json
-          cat index.min.json
-
-      # THIS is the step that actually publishes everything to GitHub
       - name: Publish to repo branch
         uses: peaceiris/actions-gh-pages@v4
         with:
