@@ -74,62 +74,67 @@ jobs:
           -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }}
           -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
 
-      - name: Collect APKs and Icons
+      - name: Collect APKs and Icons dynamically
         run: |
           mkdir -p repo/apk
           mkdir -p repo/icon
-          # Force exact APK names to match your hardcoded index.min.json
-          cp src/en/comix/build/outputs/apk/release/*.apk repo/apk/comix-release.apk
-          cp src/en/example/build/outputs/apk/release/*.apk repo/apk/example-release.apk
-          # Publish the icons so the index "icon" URLs work
-          cp src/en/comix/src/main/res/mipmap-xxxhdpi/ic_launcher.png repo/icon/comix.png
-          cp src/en/example/src/main/res/mipmap-xxxhdpi/ic_launcher.png repo/icon/example.png
+          for ext_dir in src/*/*/; do
+            ext_name=$(basename "$ext_dir")
+            cp "$ext_dir/build/outputs/apk/release/"*.apk "repo/apk/${ext_name}-release.apk" || true
+            cp "$ext_dir/src/main/res/mipmap-xxxhdpi/ic_launcher.png" "repo/icon/${ext_name}.png" || true
+          done
           ls -la repo/apk
           ls -la repo/icon
 
-      # Static, complete index in the exact format Keiyoushi/Mihon/Aniyomi expect.
-      # When you update an extension, bump "code" and "version" here manually.
-      - name: Generate index.min.json
+      - name: Generate index.min.json automatically
         run: |
-          cat > repo/index.min.json <<'EOF'
-          [
-            {
-              "name": "Comix",
-              "pkg": "eu.kanade.tachiyomi.extension.en.comix",
-              "apk": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/apk/comix-v2.apk",
-              "lang": "en",
-              "code": 1,
-              "version": "1.4.3",
-              "nsfw": 0,
-              "hasReadme": 0,
-              "hasChangelog": 0,
-              "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/refs/heads/repo/icon/comix-v2.png",
-              "sources": [
-                { "id": 7102655201534291865, "lang": "en", "name": "Comix", "baseUrl": "https://comix.to", "versionId": 1 }
-              ]
-            },
-            {
-              "name": "Example",
-              "pkg": "eu.kanade.tachiyomi.extension.en.example",
-              "apk": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/apk/example-release.apk",
-              "lang": "en",
-              "code": 1,
-              "version": "1.4.1",
-              "nsfw": 0,
-              "hasReadme": 0,
-              "hasChangelog": 0,
-              "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/example.png",
-              "sources": [
-                { "id": 4289163821097362431, "lang": "en", "name": "Example", "baseUrl": "https://example.com", "versionId": 1 }
-              ]
-            }
-          ]
-          EOF
+          python3 -c "
+          import os, re, json, hashlib
+          repo = os.environ['GITHUB_REPOSITORY']
+          url_base = f'https://raw.githubusercontent.com/{repo}/repo'
+          index = []
+          for lang in os.listdir('src'):
+              lang_path = os.path.join('src', lang)
+              if not os.path.isdir(lang_path): continue
+              for ext in os.listdir(lang_path):
+                  ext_path = os.path.join(lang_path, ext)
+                  if not os.path.isdir(ext_path): continue
+                  gradle = os.path.join(ext_path, 'build.gradle.kts')
+                  if not os.path.exists(gradle): continue
+                  gc = open(gradle).read()
+                  name = re.search(r'val extName\s*=\s*\"([^\"]+)\"', gc)
+                  code = re.search(r'val extVersionCode\s*=\s*(\d+)', gc)
+                  nsfw = re.search(r'val isNsfw\s*=\s*(true|false)', gc)
+                  pkg = re.search(r'applicationId\s*=\s*\"([^\"]+)\"', gc)
+                  if not all([name, code, nsfw, pkg]): continue
+                  
+                  code_val = code.group(1)
+                  
+                  kt_path = next((os.path.join(r, f) for r,_,fs in os.walk(os.path.join(ext_path, 'src/main/kotlin')) for f in fs if f.endswith('.kt')), None)
+                  kt = open(kt_path).read() if kt_path else ''
+                  b_url = re.search(r'override val baseUrl\s*=\s*\"([^\"]+)\"', kt)
+                  src_id = int(hashlib.md5(pkg.group(1).encode()).hexdigest()[:8], 16)
+                  
+                  index.append({
+                      'name': name.group(1), 'pkg': pkg.group(1),
+                      'apk': f'{url_base}/apk/{ext}-release.apk', 'lang': lang,
+                      'code': int(code_val), 
+                      'version': '1.4',  # 👈 HARDCODED LIB VERSION! This is the fix.
+                      'nsfw': 2 if nsfw.group(1)=='true' else 0,
+                      'hasReadme':0,'hasChangelog':0,
+                      'icon': f'{url_base}/icon/{ext}.png',
+                      'sources':[{'id':src_id,'lang':lang,'name':name.group(1),'baseUrl':b_url.group(1) if b_url else '','versionId':1}]
+                  })
+          with open('repo/index.min.json','w') as f: json.dump(index,f,separators=(',',':'))
+          "
           cat repo/index.min.json
 
       - name: Publish to repo branch
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./repo
-          publish_branch: repo
+        run: |
+          cd repo
+          git init -b repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: publish extension repo"
+          git push --force https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:repo
