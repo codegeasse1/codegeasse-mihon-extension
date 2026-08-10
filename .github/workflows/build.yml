@@ -63,16 +63,8 @@ jobs:
         with:
           gradle-version: 8.10.2
 
-      - name: Decode Keystore
-        run: echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > keystore.jks
-
-      - name: Build and Sign Release APKs
-        run: >
-          gradle assembleRelease --stacktrace
-          -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/keystore.jks
-          -Pandroid.injected.signing.store.password=${{ secrets.KEY_STORE_PASSWORD }}
-          -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }}
-          -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+      - name: Build Release APKs
+        run: gradle assembleRelease --stacktrace
 
       - name: Collect APKs dynamically
         run: |
@@ -127,7 +119,6 @@ jobs:
                   
                   src_id = generate_id(name_val, lang)
                   
-                  # CACHE BUSTING: Dynamically name the icon so Mihon always fetches the latest
                   icon_src = os.path.join(ext_path, 'src', 'main', 'res', 'mipmap-xxxhdpi', 'ic_launcher.png')
                   icon_filename = f'{ext}-v{code_val}.png'
                   if os.path.exists(icon_src):
@@ -139,7 +130,7 @@ jobs:
                       'apk': f'{url_base}/apk/{ext}-release.apk',
                       'lang': lang,
                       'code': int(code_val), 
-                      'version': f'1.4.{code_val}',  
+                      'version': f'1.6.{code_val}',  
                       'nsfw': 2 if nsfw_match.group(1)=='true' else 0,
                       'hasReadme': 0, 'hasChangelog': 0,
                       'icon': f'{url_base}/icon/{icon_filename}',
@@ -150,8 +141,6 @@ jobs:
           with open('repo/index.json','w') as f: json.dump(index,f,indent=2)
           with open('repo/repo.json','w') as f: json.dump(index,f,separators=(',',':'))
           "
-          echo "--- GENERATED index.min.json ---"
-          cat repo/index.min.json
 
       - name: Publish to repo branch
         run: |
