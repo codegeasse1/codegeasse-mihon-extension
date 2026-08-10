@@ -79,9 +79,11 @@ jobs:
           mkdir -p repo/apk
           mkdir -p repo/icon
           for ext_dir in src/*/*/; do
-            ext_name=$(basename "$ext_dir")
-            cp "$ext_dir/build/outputs/apk/release/"*.apk "repo/apk/${ext_name}-release.apk" || true
-            cp "$ext_dir/src/main/res/mipmap-xxxhdpi/ic_launcher.png" "repo/icon/${ext_name}.png" || true
+            if [ -d "$ext_dir" ]; then
+              ext_name=$(basename "$ext_dir")
+              cp "$ext_dir/build/outputs/apk/release/"*.apk "repo/apk/${ext_name}-release.apk" || true
+              cp "$ext_dir/src/main/res/mipmap-xxxhdpi/ic_launcher.png" "repo/icon/${ext_name}.png" || true
+            fi
           done
           ls -la repo/apk
           ls -la repo/icon
@@ -89,12 +91,19 @@ jobs:
       - name: Generate index.min.json, index.json, and repo.json
         run: |
           python3 -c "
-          import os, re, json, hashlib
+          import os, re, json, hashlib, struct
+          
+          # 1. FIXED: Correct 64-bit ID Generation required by Mihon
+          def generate_id(name, lang, version_id=1):
+              key = f'{lang}/{name}/{version_id}'.encode('utf-8')
+              md5_bytes = hashlib.md5(key).digest()
+              return struct.unpack('>q', md5_bytes[:8])[0]
+
           repo = os.environ['GITHUB_REPOSITORY']
           url_base = f'https://raw.githubusercontent.com/{repo}/repo'
           index = []
           
-          # 1. Dynamically read libVersion from gradle.properties
+          # Dynamically read libVersion from gradle.properties
           lib_version = '1.6'
           if os.path.exists('gradle.properties'):
               with open('gradle.properties') as f:
@@ -110,53 +119,46 @@ jobs:
                   gradle = os.path.join(ext_path, 'build.gradle.kts')
                   if not os.path.exists(gradle): continue
                   gc = open(gradle).read()
-                  name = re.search(r'val extName\s*=\s*\"([^\"]+)\"', gc)
-                  code = re.search(r'val extVersionCode\s*=\s*(\d+)', gc)
-                  nsfw = re.search(r'val isNsfw\s*=\s*(true|false)', gc)
-                  pkg = re.search(r'applicationId\s*=\s*\"([^\"]+)\"', gc)
-                  if not all([name, code, nsfw, pkg]): continue
                   
-                  code_val = code.group(1)
+                  name_match = re.search(r'val extName\s*=\s*\"([^\"]+)\"', gc)
+                  code_match = re.search(r'val extVersionCode\s*=\s*(\d+)', gc)
+                  nsfw_match = re.search(r'val isNsfw\s*=\s*(true|false)', gc)
+                  pkg_match = re.search(r'applicationId\s*=\s*\"([^\"]+)\"', gc)
+                  
+                  if not all([name_match, code_match, nsfw_match, pkg_match]): continue
+                  
+                  name_val = name_match.group(1)
+                  code_val = code_match.group(1)
+                  pkg_val = pkg_match.group(1)
                   
                   kt_path = next((os.path.join(r, f) for r,_,fs in os.walk(os.path.join(ext_path, 'src/main/kotlin')) for f in fs if f.endswith('.kt')), None)
                   kt = open(kt_path).read() if kt_path else ''
                   b_url = re.search(r'override val baseUrl\s*=\s*\"([^\"]+)\"', kt)
-                  src_id = int(hashlib.md5(pkg.group(1).encode()).hexdigest()[:8], 16)
+                  b_url_val = b_url.group(1) if b_url else ''
+                  
+                  src_id = generate_id(name_val, lang)
                   
                   index.append({
-                      'name': f'Tachiyomi: {name.group(1)}',
-                      'pkg': pkg.group(1),
-                      'apk': f'apk/{ext}-release.apk',
+                      'name': f'Tachiyomi: {name_val}',
+                      'pkg': pkg_val,
+                      # 2. FIXED: Restored absolute URLs for apk and icon
+                      'apk': f'{url_base}/apk/{ext}-release.apk',
                       'lang': lang,
                       'code': int(code_val), 
                       'version': f'{lib_version}.{code_val}',  
-                      'nsfw': 2 if nsfw.group(1)=='true' else 0,
-                      'hasReadme':0,'hasChangelog':0,
-                      'icon': f'icon/{ext}.png',
-                      'sources':[{'id':src_id,'lang':lang,'name':name.group(1),'baseUrl':b_url.group(1) if b_url else '','versionId':1}]
+                      'nsfw': 2 if nsfw_match.group(1)=='true' else 0,
+                      'hasReadme': 0, 'hasChangelog': 0,
+                      'icon': f'{url_base}/icon/{ext}.png',
+                      'sources': [{'id': src_id, 'lang': lang, 'name': name_val, 'baseUrl': b_url_val, 'versionId': 1}]
                   })
           
-          # 2. Write index.min.json (minified array of extensions)
+          # 3. FIXED: Made all JSON files identical arrays so Mihon won't crash
           with open('repo/index.min.json','w') as f: json.dump(index,f,separators=(',',':'))
-          
-          # 3. Write index.json (unminified array, used by some forks)
           with open('repo/index.json','w') as f: json.dump(index,f,indent=2)
-          
-          # 4. Write repo.json (Metadata file required by modern Mihon/Aniyomi)
-          repo_meta = {
-              'meta': {
-                  'name': 'CodeGeasse Extensions',
-                  'shortName': 'CG-EXT',
-                  'website': f'https://github.com/{repo}'
-              }
-          }
-          with open('repo/repo.json','w') as f: json.dump(repo_meta,f,indent=2)
+          with open('repo/repo.json','w') as f: json.dump(index,f,separators=(',',':'))
           "
-          echo "--- GENERATED repo.json ---"
-          cat repo/repo.json
-          echo "\n--- GENERATED index.min.json ---"
+          echo "--- GENERATED index.min.json ---"
           cat repo/index.min.json
-          echo "------------------------"
 
       - name: Publish to repo branch
         run: |
