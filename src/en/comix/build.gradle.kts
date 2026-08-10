@@ -10,19 +10,21 @@ val extVersionCode = 4
 val isNsfw = false
 // ------------------------------------------------------------------------
 
-val libVersion = (project.findProperty("libVersion") as String?) ?: "1.6.0"
+val libVersion = (project.findProperty("libVersion") as String?) ?: "1.6"
 
 android {
     namespace = "eu.kanade.tachiyomi.extension.en.comix"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "eu.kanade.tachiyomi.extension.en.example"
+        // 🔥 FIXED: Was incorrectly set to en.example!
+        applicationId = "eu.kanade.tachiyomi.extension.en.comix"
         minSdk = 21
         targetSdk = 34
         versionCode = extVersionCode
-        // 🔥 CHANGE THIS LINE:
-        versionName = "$libVersion.$extVersionCode" // e.g., "1.6.1"
+        
+        // 🔥 Generates "1.6.4" to match the JSON exactly
+        versionName = "$libVersion.$extVersionCode" 
 
         manifestPlaceholders["appName"] = "Tachiyomi: $extName"
         manifestPlaceholders["extClass"] = extClass
@@ -42,11 +44,12 @@ android {
     }
 }
 
-    kotlin {
+kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
+
 dependencies {
     compileOnly("com.github.mihonapp:tachiyomix:$libVersion")
 
