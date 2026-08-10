@@ -27,7 +27,7 @@ android {
         manifestPlaceholders["extClass"] = extClass
         // Content Rating per tachiyomix's manifest spec: 0 = Safe, 1 = Mixed, 2 = NSFW
         manifestPlaceholders["nsfw"] = if (isNsfw) 2 else 0
-        manifestPlaceholders["libVersion"] = libVersion
+        manifestPlaceholders["libVersion"] = "1.4"
     }
 
     buildTypes {
