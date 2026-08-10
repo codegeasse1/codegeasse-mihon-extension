@@ -6,11 +6,10 @@ plugins {
 // --- Extension metadata -----------------------------------------------
 val extName = "Codegeasse Comix"
 val extClass = ".Comix"
-val extVersionCode = 5 
+val extVersionCode = 6
 val isNsfw = false
 // ------------------------------------------------------------------------
 
-// Pulls 1.6.0 from gradle.properties so JitPack doesn't crash
 val libVersion = (project.findProperty("libVersion") as String?) ?: "1.6.0"
 
 android {
@@ -22,16 +21,12 @@ android {
         minSdk = 21
         targetSdk = 34
         versionCode = extVersionCode
-        
-        // 🔥 Forces the APK to say it is version 1.4.5
-        versionName = "1.4.$extVersionCode" 
+        versionName = "1.6.$extVersionCode"
 
-        manifestPlaceholders["appName"] = "Tachiyomi: $extName"
+        manifestPlaceholders["appName"] = extName
         manifestPlaceholders["extClass"] = extClass
         manifestPlaceholders["nsfw"] = if (isNsfw) 2 else 0
-        
-        // 🔥 Required by Mihon to load the APK
-        manifestPlaceholders["libVersion"] = "1.4"
+        manifestPlaceholders["libVersion"] = "1.6"
     }
 
     buildTypes {
