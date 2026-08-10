@@ -93,7 +93,6 @@ jobs:
           python3 -c "
           import os, re, json, hashlib, struct
           
-          # 1. FIXED: Correct 64-bit ID Generation required by Mihon
           def generate_id(name, lang, version_id=1):
               key = f'{lang}/{name}/{version_id}'.encode('utf-8')
               md5_bytes = hashlib.md5(key).digest()
@@ -102,13 +101,6 @@ jobs:
           repo = os.environ['GITHUB_REPOSITORY']
           url_base = f'https://raw.githubusercontent.com/{repo}/repo'
           index = []
-          
-          # Dynamically read libVersion from gradle.properties
-          lib_version = '1.6'
-          if os.path.exists('gradle.properties'):
-              with open('gradle.properties') as f:
-                  m = re.search(r'libVersion\s*=\s*\"?([0-9\.]+)\"?', f.read())
-                  if m: lib_version = m.group(1)
           
           for lang in os.listdir('src'):
               lang_path = os.path.join('src', lang)
@@ -139,20 +131,18 @@ jobs:
                   src_id = generate_id(name_val, lang)
                   
                   index.append({
-                      'name': f'Tachiyomi: {name_val}',
+                      'name': name_val,
                       'pkg': pkg_val,
-                      # 2. FIXED: Restored absolute URLs for apk and icon
                       'apk': f'{url_base}/apk/{ext}-release.apk',
                       'lang': lang,
                       'code': int(code_val), 
-                      'version': f'{lib_version}.{code_val}',  
+                      'version': f'1.4.{code_val}',  
                       'nsfw': 2 if nsfw_match.group(1)=='true' else 0,
                       'hasReadme': 0, 'hasChangelog': 0,
                       'icon': f'{url_base}/icon/{ext}.png',
                       'sources': [{'id': src_id, 'lang': lang, 'name': name_val, 'baseUrl': b_url_val, 'versionId': 1}]
                   })
           
-          # 3. FIXED: Made all JSON files identical arrays so Mihon won't crash
           with open('repo/index.min.json','w') as f: json.dump(index,f,separators=(',',':'))
           with open('repo/index.json','w') as f: json.dump(index,f,indent=2)
           with open('repo/repo.json','w') as f: json.dump(index,f,separators=(',',':'))
