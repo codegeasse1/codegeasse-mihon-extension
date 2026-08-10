@@ -15,7 +15,7 @@
         android:supportsRtl="true">
 
         <!-- ========================================== -->
-        <!-- NEW METADATA (Required by latest Mihon)    -->
+        <!-- NEW METADATA  (Required by latest Mihon)    -->
         <!-- ========================================== -->
         <meta-data android:name="tachiyomix.name" android:value="${appName}" />
         <meta-data android:name="tachiyomix.contentWarning" android:value="${nsfw}" />
