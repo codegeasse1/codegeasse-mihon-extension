@@ -4,22 +4,20 @@ plugins {
 }
 
 // --- Extension metadata -----------------------------------------------
-val extName = "Codegeasse Comix" 
+val extName = "Comix"
 val extClass = ".Comix"
-val extVersionCode = 3// 👈 Bumped to 2 to force Mihon to update
+val extVersionCode = 4
 val isNsfw = false
 // ------------------------------------------------------------------------
 
 val libVersion = (project.findProperty("libVersion") as String?) ?: "1.6.0"
 
 android {
-    // We leave the namespace alone so you don't have to rename your physical folders on your phone
     namespace = "eu.kanade.tachiyomi.extension.en.comix"
     compileSdk = 34
 
     defaultConfig {
-        // This unique fingerprint separates it from Keiyoushi
-        applicationId = "eu.kanade.tachiyomi.extension.en.codegeassecomix" 
+        applicationId = "eu.kanade.tachiyomi.extension.en.comix"
         minSdk = 21
         targetSdk = 34
         versionCode = extVersionCode
@@ -44,12 +42,11 @@ android {
     }
 }
 
-kotlin {
+    kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
-
 dependencies {
     compileOnly("com.github.mihonapp:tachiyomix:$libVersion")
 
