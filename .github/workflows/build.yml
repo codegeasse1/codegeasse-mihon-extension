@@ -95,7 +95,7 @@ jobs:
           index = []
           
           # 1. Dynamically read libVersion from gradle.properties
-          lib_version = '1.4'
+          lib_version = '1.6'
           if os.path.exists('gradle.properties'):
               with open('gradle.properties') as f:
                   m = re.search(r'libVersion\s*=\s*\"?([0-9\.]+)\"?', f.read())
@@ -124,12 +124,12 @@ jobs:
                   src_id = int(hashlib.md5(pkg.group(1).encode()).hexdigest()[:8], 16)
                   
                   index.append({
-                      'name': f'Tachiyomi: {name.group(1)}', # Standard naming convention
+                      'name': f'Tachiyomi: {name.group(1)}',
                       'pkg': pkg.group(1),
-                      'apk': f'apk/{ext}-release.apk', # Use relative path (Tachiyomi appends this to repo URL)
+                      'apk': f'apk/{ext}-release.apk',
                       'lang': lang,
                       'code': int(code_val), 
-                      # 🔥 THE CRITICAL FIX: Matches the APK's versionName exactly (e.g. "1.6.1")
+                      # 🔥 Generates "1.6.4" which exactly matches the APK versionName
                       'version': f'{lib_version}.{code_val}',  
                       'nsfw': 2 if nsfw.group(1)=='true' else 0,
                       'hasReadme':0,'hasChangelog':0,
@@ -138,7 +138,9 @@ jobs:
                   })
           with open('repo/index.min.json','w') as f: json.dump(index,f,separators=(',',':'))
           "
+          echo "--- GENERATED JSON ---"
           cat repo/index.min.json
+          echo "------------------------"
 
       - name: Publish to repo branch
         run: |
