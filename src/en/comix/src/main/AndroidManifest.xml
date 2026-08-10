@@ -14,18 +14,11 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true">
 
-        <!-- ========================================== -->
-        <!-- NEW METADATA  (Required by latest Mihon)    -->
-        <!-- ========================================== -->
         <meta-data android:name="tachiyomix.name" android:value="${appName}" />
         <meta-data android:name="tachiyomix.contentWarning" android:value="${nsfw}" />
         <meta-data android:name="tachiyomix.extensionLib" android:value="${libVersion}" />
         <meta-data android:name="tachiyomi.extension.class" android:value="${extClass}" />
 
-        <!-- ========================================== -->
-        <!-- LEGACY METADATA (Required for Aniyomi,     -->
-        <!-- forks, and older Mihon due to a bug)       -->
-        <!-- ========================================== -->
         <meta-data android:name="tachiyomi.extension.name" android:value="${appName}" />
         <meta-data android:name="tachiyomi.extension.nsfw" android:value="${nsfw}" />
         <meta-data android:name="tachiyomi.extension.lib" android:value="${libVersion}" />
