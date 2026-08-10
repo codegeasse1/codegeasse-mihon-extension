@@ -17,17 +17,17 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "eu.kanade.tachiyomi.extension.en.comix"
+        applicationId = "eu.kanade.tachiyomi.extension.en.example"
         minSdk = 21
         targetSdk = 34
         versionCode = extVersionCode
-        versionName = "1.$extVersionCode"
+        // 🔥 CHANGE THIS LINE:
+        versionName = "$libVersion.$extVersionCode" // e.g., "1.6.1"
 
         manifestPlaceholders["appName"] = "Tachiyomi: $extName"
         manifestPlaceholders["extClass"] = extClass
-        // Content Rating per tachiyomix's manifest spec: 0 = Safe, 1 = Mixed, 2 = NSFW
         manifestPlaceholders["nsfw"] = if (isNsfw) 2 else 0
-        manifestPlaceholders["libVersion"] = "1.4"
+        manifestPlaceholders["libVersion"] = libVersion
     }
 
     buildTypes {
