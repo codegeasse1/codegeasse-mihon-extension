@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.util.asJsoup // <-- MISSING IMPORT ADDED HERE
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -60,11 +61,15 @@ class Example : HttpSource() {
 
     // ---- Manga details -----------------------------------------------
 
-    override fun mangaDetailsParse(document: Document): SManga = SManga.create().apply {
-        title = document.selectFirst("h1.title")?.text().orEmpty()
-        author = document.selectFirst("span.author")?.text()
-        description = document.selectFirst("div.description")?.text()
-        thumbnail_url = document.selectFirst("img.cover")?.absUrl("src")
+    // FIXED: Changed parameter from Document to Response, and converted it to Document inside.
+    override fun mangaDetailsParse(response: Response): SManga {
+        val document = response.asJsoup()
+        return SManga.create().apply {
+            title = document.selectFirst("h1.title")?.text().orEmpty()
+            author = document.selectFirst("span.author")?.text()
+            description = document.selectFirst("div.description")?.text()
+            thumbnail_url = document.selectFirst("img.cover")?.absUrl("src")
+        }
     }
 
     // ---- Chapters ----------------------------------------------------
