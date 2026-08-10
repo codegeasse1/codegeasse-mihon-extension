@@ -93,6 +93,14 @@ jobs:
           repo = os.environ['GITHUB_REPOSITORY']
           url_base = f'https://raw.githubusercontent.com/{repo}/repo'
           index = []
+          
+          # 1. Dynamically read libVersion from gradle.properties
+          lib_version = '1.4'
+          if os.path.exists('gradle.properties'):
+              with open('gradle.properties') as f:
+                  m = re.search(r'libVersion\s*=\s*\"?([0-9\.]+)\"?', f.read())
+                  if m: lib_version = m.group(1)
+          
           for lang in os.listdir('src'):
               lang_path = os.path.join('src', lang)
               if not os.path.isdir(lang_path): continue
@@ -116,13 +124,16 @@ jobs:
                   src_id = int(hashlib.md5(pkg.group(1).encode()).hexdigest()[:8], 16)
                   
                   index.append({
-                      'name': name.group(1), 'pkg': pkg.group(1),
-                      'apk': f'{url_base}/apk/{ext}-release.apk', 'lang': lang,
+                      'name': f'Tachiyomi: {name.group(1)}', # Standard naming convention
+                      'pkg': pkg.group(1),
+                      'apk': f'apk/{ext}-release.apk', # Use relative path (Tachiyomi appends this to repo URL)
+                      'lang': lang,
                       'code': int(code_val), 
-                      'version': '1.4',  # 👈 HARDCODED LIB VERSION! This is the fix.
+                      # 🔥 THE CRITICAL FIX: Matches the APK's versionName exactly (e.g. "1.6.1")
+                      'version': f'{lib_version}.{code_val}',  
                       'nsfw': 2 if nsfw.group(1)=='true' else 0,
                       'hasReadme':0,'hasChangelog':0,
-                      'icon': f'{url_base}/icon/{ext}.png',
+                      'icon': f'icon/{ext}.png',
                       'sources':[{'id':src_id,'lang':lang,'name':name.group(1),'baseUrl':b_url.group(1) if b_url else '','versionId':1}]
                   })
           with open('repo/index.min.json','w') as f: json.dump(index,f,separators=(',',':'))
