@@ -8,7 +8,7 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
-import eu.kanade.tachiyomi.util.asJsoup // <-- MISSING IMPORT ADDED HERE
+import eu.kanade.tachiyomi.util.asJsoup 
 import okhttp3.Request
 import okhttp3.Response
 import org.json.JSONArray
@@ -20,7 +20,7 @@ import org.jsoup.nodes.Document
  */
 class Comix : HttpSource() {
 
-    override val name = "Comix"
+    override val name = "Codegeasse Comix" // 👈 Matches the Gradle file perfectly
 
     override val baseUrl = "https://comix.to"
 
@@ -108,7 +108,6 @@ class Comix : HttpSource() {
 
     // ---- Manga details --------------------------------------------------------
 
-    // FIXED: Changed parameter from Document to Response, and converted it to Document inside.
     override fun mangaDetailsParse(response: Response): SManga {
         val document = response.asJsoup()
         return SManga.create().apply {
