@@ -10,7 +10,7 @@ val extVersionCode = 1
 val isNsfw = false
 // ------------------------------------------------------------------------
 
-val libVersion = (project.findProperty("libVersion") as String?) ?: "1.6"
+val libVersion = (project.findProperty("libVersion") as String?) ?: "1.6.0"
 
 android {
     namespace = "eu.kanade.tachiyomi.extension.en.comix"
