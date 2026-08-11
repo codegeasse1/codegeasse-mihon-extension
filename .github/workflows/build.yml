@@ -45,7 +45,658 @@ jobs:
           IMAGE_EXTS = {".png", ".webp", ".jpg", ".jpeg"}
 
           def image_tool():
-              if shu...te("\n".join(html_lines))
+              if shutil.which("magick"):
+                  return "magick"
+              if shutil.which("convert"):
+                  return "convert"
+              raise RuntimeError("ImageMagick not found")
+
+          IM = image_tool()
+
+          def convert_icon(input_path, output_path, size):
+              input_path = Path(input_path)
+              output_path = Path(output_path)
+              output_path.parent.mkdir(parents=True, exist_ok=True)
+
+              def run_convert(src):
+                  cmd = [
+                      IM,
+                      str(src),
+                      "-auto-orient",
+                      "-resize",
+                      f"{size}x{size}",
+                      "-background",
+                      "transparent",
+                      "-gravity",
+                      "center",
+                      "-extent",
+                      f"{size}x{size}",
+                      f"PNG32:{output_path}",
+                  ]
+                  subprocess.run(cmd, check=True)
+
+              try:
+                  run_convert(input_path)
+                  return True
+              except Exception:
+                  pass
+
+              if input_path.suffix.lower() == ".webp" and shutil.which("dwebp"):
+                  with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                      tmp_path = Path(tmp.name)
+
+                  try:
+                      subprocess.run(["dwebp", str(input_path), "-o", str(tmp_path)], check=True)
+                      run_convert(tmp_path)
+                      return True
+                  finally:
+                      tmp_path.unlink(missing_ok=True)
+
+              return False
+
+          def find_icon(ext_dir):
+              ext_dir = Path(ext_dir)
+              res_dir = ext_dir / "src" / "main" / "res"
+
+              preferred_names = [
+                  "ic_launcher",
+                  "ic_launcher_foreground",
+                  "icon",
+                  "logo",
+                  "app_icon",
+              ]
+
+              search_dirs = []
+
+              if res_dir.exists():
+                  for pattern in ["mipmap-*", "mipmap", "drawable-*", "drawable"]:
+                      search_dirs.extend(sorted(res_dir.glob(pattern)))
+
+              # 1. Prefer standard icon names in res folders
+              for directory in search_dirs:
+                  if not directory.is_dir():
+                      continue
+
+                  for base in preferred_names:
+                      for ext in IMAGE_EXTS:
+                          candidate = directory / f"{base}{ext}"
+                          if candidate.exists():
+                              return candidate
+
+              # 2. Any image inside mipmap/drawable folders
+              if res_dir.exists():
+                  for p in sorted(res_dir.rglob("*")):
+                      if p.is_file() and p.suffix.lower() in IMAGE_EXTS:
+                          return p
+
+              # 3. Final fallback: any image anywhere inside extension folder
+              for p in sorted(ext_dir.rglob("*")):
+                  if not p.is_file():
+                      continue
+                  if p.suffix.lower() not in IMAGE_EXTS:
+                      continue
+                  if "build" in p.parts:
+                      continue
+                  return p
+
+              return None
+
+          for ext_dir in sorted(Path("src").glob("*/*")):
+              if not ext_dir.is_dir():
+                  continue
+
+              ext_name = ext_dir.name
+              target_icon = ext_dir / "src" / "main" / "res" / "mipmap-xxxhdpi" / "ic_launcher.png"
+
+              if target_icon.exists():
+                  print(f"Source icon already exists: {target_icon}")
+                  continue
+
+              icon_src = find_icon(ext_dir)
+
+              if not icon_src:
+                  print(f"WARN: No icon found for {ext_name}")
+                  continue
+
+              print(f"Generating source ic_launcher.png for {ext_name} from {icon_src}")
+              ok = convert_icon(icon_src, target_icon, 512)
+
+              if not ok:
+                  print(f"WARN: Failed to convert icon for {ext_name}")
+
+          PY
+
+      - name: Build every extension debug APKs
+        run: gradle assembleDebug --stacktrace
+
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-apks
+          path: "**/build/outputs/apk/**/*.apk"
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Install image tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick webp
+
+      - name: Normalize source icons before release build
+        run: |
+          python3 << "PY"
+          import os
+          import shutil
+          import subprocess
+          import tempfile
+          from pathlib import Path
+
+          IMAGE_EXTS = {".png", ".webp", ".jpg", ".jpeg"}
+
+          def image_tool():
+              if shutil.which("magick"):
+                  return "magick"
+              if shutil.which("convert"):
+                  return "convert"
+              raise RuntimeError("ImageMagick not found")
+
+          IM = image_tool()
+
+          def convert_icon(input_path, output_path, size):
+              input_path = Path(input_path)
+              output_path = Path(output_path)
+              output_path.parent.mkdir(parents=True, exist_ok=True)
+
+              def run_convert(src):
+                  cmd = [
+                      IM,
+                      str(src),
+                      "-auto-orient",
+                      "-resize",
+                      f"{size}x{size}",
+                      "-background",
+                      "transparent",
+                      "-gravity",
+                      "center",
+                      "-extent",
+                      f"{size}x{size}",
+                      f"PNG32:{output_path}",
+                  ]
+                  subprocess.run(cmd, check=True)
+
+              try:
+                  run_convert(input_path)
+                  return True
+              except Exception:
+                  pass
+
+              if input_path.suffix.lower() == ".webp" and shutil.which("dwebp"):
+                  with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                      tmp_path = Path(tmp.name)
+
+                  try:
+                      subprocess.run(["dwebp", str(input_path), "-o", str(tmp_path)], check=True)
+                      run_convert(tmp_path)
+                      return True
+                  finally:
+                      tmp_path.unlink(missing_ok=True)
+
+              return False
+
+          def find_icon(ext_dir):
+              ext_dir = Path(ext_dir)
+              res_dir = ext_dir / "src" / "main" / "res"
+
+              preferred_names = [
+                  "ic_launcher",
+                  "ic_launcher_foreground",
+                  "icon",
+                  "logo",
+                  "app_icon",
+              ]
+
+              search_dirs = []
+
+              if res_dir.exists():
+                  for pattern in ["mipmap-*", "mipmap", "drawable-*", "drawable"]:
+                      search_dirs.extend(sorted(res_dir.glob(pattern)))
+
+              for directory in search_dirs:
+                  if not directory.is_dir():
+                      continue
+
+                  for base in preferred_names:
+                      for ext in IMAGE_EXTS:
+                          candidate = directory / f"{base}{ext}"
+                          if candidate.exists():
+                              return candidate
+
+              if res_dir.exists():
+                  for p in sorted(res_dir.rglob("*")):
+                      if p.is_file() and p.suffix.lower() in IMAGE_EXTS:
+                          return p
+
+              for p in sorted(ext_dir.rglob("*")):
+                  if not p.is_file():
+                      continue
+                  if p.suffix.lower() not in IMAGE_EXTS:
+                      continue
+                  if "build" in p.parts:
+                      continue
+                  return p
+
+              return None
+
+          for ext_dir in sorted(Path("src").glob("*/*")):
+              if not ext_dir.is_dir():
+                  continue
+
+              ext_name = ext_dir.name
+              target_icon = ext_dir / "src" / "main" / "res" / "mipmap-xxxhdpi" / "ic_launcher.png"
+
+              if target_icon.exists():
+                  print(f"Source icon already exists: {target_icon}")
+                  continue
+
+              icon_src = find_icon(ext_dir)
+
+              if not icon_src:
+                  print(f"WARN: No icon found for {ext_name}")
+                  continue
+
+              print(f"Generating source ic_launcher.png for {ext_name} from {icon_src}")
+              ok = convert_icon(icon_src, target_icon, 512)
+
+              if not ok:
+                  print(f"WARN: Failed to convert icon for {ext_name}")
+
+          PY
+
+      - name: Decode Keystore
+        run: echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > keystore.jks
+
+      - name: Build and Sign Release APKs
+        run: >
+          gradle assembleRelease --stacktrace
+          -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/keystore.jks
+          -Pandroid.injected.signing.store.password=${{ secrets.KEY_STORE_PASSWORD }}
+          -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }}
+          -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+
+      - name: Calculate signing key fingerprint
+        env:
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          python3 << "PY"
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          fp = ""
+
+          keystore = Path("keystore.jks")
+          alias = os.environ.get("KEY_ALIAS", "")
+          password = os.environ.get("KEY_STORE_PASSWORD", "")
+
+          if keystore.exists() and alias and password:
+              try:
+                  result = subprocess.run(
+                      [
+                          "keytool",
+                          "-list",
+                          "-v",
+                          "-keystore",
+                          str(keystore),
+                          "-alias",
+                          alias,
+                          "-storepass",
+                          password,
+                      ],
+                      capture_output=True,
+                      text=True,
+                      check=False,
+                  )
+
+                  match = re.search(r"SHA256:\s*([A-Fa-f0-9:]+)", result.stdout)
+                  if match:
+                      fp = match.group(1).replace(":", "").lower()
+              except Exception as e:
+                  print(f"WARN: keytool failed: {e}")
+
+          print(f"SIGNING_FINGERPRINT={fp}")
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
+              f.write(f"SIGNING_FINGERPRINT={fp}\n")
+
+          PY
+
+      - name: Prepare repo files
+        run: |
+          python3 << "PY"
+          import os
+          import re
+          import json
+          import html
+          import shutil
+          import hashlib
+          import subprocess
+          import tempfile
+          from pathlib import Path
+
+          LIB_API_VERSION = "1.4"
+          IMAGE_EXTS = {".png", ".webp", ".jpg", ".jpeg"}
+
+          repo_name = os.environ.get("GITHUB_REPOSITORY", "codegeasse1/codegeasse-mihon-extension")
+          signing_fingerprint = os.environ.get("SIGNING_FINGERPRINT", "")
+
+          repo_dir = Path("repo")
+          apk_dir = repo_dir / "apk"
+          icon_dir = repo_dir / "icon"
+
+          apk_dir.mkdir(parents=True, exist_ok=True)
+          icon_dir.mkdir(parents=True, exist_ok=True)
+
+          def image_tool():
+              if shutil.which("magick"):
+                  return "magick"
+              if shutil.which("convert"):
+                  return "convert"
+              raise RuntimeError("ImageMagick not found")
+
+          IM = image_tool()
+
+          def convert_icon(input_path, output_path, size):
+              input_path = Path(input_path)
+              output_path = Path(output_path)
+              output_path.parent.mkdir(parents=True, exist_ok=True)
+
+              def run_convert(src):
+                  cmd = [
+                      IM,
+                      str(src),
+                      "-auto-orient",
+                      "-resize",
+                      f"{size}x{size}",
+                      "-background",
+                      "transparent",
+                      "-gravity",
+                      "center",
+                      "-extent",
+                      f"{size}x{size}",
+                      f"PNG32:{output_path}",
+                  ]
+                  subprocess.run(cmd, check=True)
+
+              try:
+                  run_convert(input_path)
+                  return True
+              except Exception:
+                  pass
+
+              if input_path.suffix.lower() == ".webp" and shutil.which("dwebp"):
+                  with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                      tmp_path = Path(tmp.name)
+
+                  try:
+                      subprocess.run(["dwebp", str(input_path), "-o", str(tmp_path)], check=True)
+                      run_convert(tmp_path)
+                      return True
+                  finally:
+                      tmp_path.unlink(missing_ok=True)
+
+              return False
+
+          def find_icon(ext_dir):
+              ext_dir = Path(ext_dir)
+              res_dir = ext_dir / "src" / "main" / "res"
+
+              preferred_names = [
+                  "ic_launcher",
+                  "ic_launcher_foreground",
+                  "icon",
+                  "logo",
+                  "app_icon",
+              ]
+
+              search_dirs = []
+
+              if res_dir.exists():
+                  for pattern in ["mipmap-*", "mipmap", "drawable-*", "drawable"]:
+                      search_dirs.extend(sorted(res_dir.glob(pattern)))
+
+              for directory in search_dirs:
+                  if not directory.is_dir():
+                      continue
+
+                  for base in preferred_names:
+                      for ext in IMAGE_EXTS:
+                          candidate = directory / f"{base}{ext}"
+                          if candidate.exists():
+                              return candidate
+
+              if res_dir.exists():
+                  for p in sorted(res_dir.rglob("*")):
+                      if p.is_file() and p.suffix.lower() in IMAGE_EXTS:
+                          return p
+
+              for p in sorted(ext_dir.rglob("*")):
+                  if not p.is_file():
+                      continue
+                  if p.suffix.lower() not in IMAGE_EXTS:
+                      continue
+                  if "build" in p.parts:
+                      continue
+                  return p
+
+              return None
+
+          def parse_gradle(ext_path):
+              gradle = ext_path / "build.gradle.kts"
+              if not gradle.exists():
+                  gradle = ext_path / "build.gradle"
+
+              if not gradle.exists():
+                  return None
+
+              text = gradle.read_text(encoding="utf-8")
+
+              name_m = re.search(r"val\s+extName\s*=\s*\"([^\"]+)\"", text)
+              code_m = re.search(r"val\s+extVersionCode\s*=\s*(\d+)", text)
+              nsfw_m = re.search(r"val\s+isNsfw\s*=\s*(true|false)", text)
+              pkg_m = re.search(r"applicationId\s*=\s*\"([^\"]+)\"", text)
+
+              if not name_m or not code_m or not pkg_m:
+                  return None
+
+              return {
+                  "name": name_m.group(1),
+                  "code": int(code_m.group(1)),
+                  "nsfw": 2 if nsfw_m and nsfw_m.group(1) == "true" else 0,
+                  "pkg": pkg_m.group(1),
+              }
+
+          def find_base_url(ext_path):
+              kt_dir = ext_path / "src" / "main" / "kotlin"
+
+              if not kt_dir.exists():
+                  return ""
+
+              for kt_file in sorted(kt_dir.rglob("*.kt")):
+                  text = kt_file.read_text(encoding="utf-8")
+                  match = re.search(r"override\s+val\s+baseUrl\s*=\s*\"([^\"]+)\"", text)
+                  if match:
+                      return match.group(1)
+
+              return ""
+
+          def copy_apk(ext_path, expected_name):
+              release_dir = ext_path / "build" / "outputs" / "apk" / "release"
+
+              if not release_dir.exists():
+                  print(f"WARN: release APK dir missing: {release_dir}")
+                  return False
+
+              apks = sorted(release_dir.glob("*.apk"))
+
+              if not apks:
+                  print(f"WARN: no APK found in {release_dir}")
+                  return False
+
+              signed_apks = [p for p in apks if "unsigned" not in p.name.lower()]
+              apk_source = signed_apks[0] if signed_apks else apks[0]
+
+              dest = apk_dir / expected_name
+              shutil.copy2(apk_source, dest)
+
+              print(f"APK OK: {dest.name} from {apk_source.name}")
+              return True
+
+          index = []
+
+          src_root = Path("src")
+
+          if not src_root.exists():
+              raise SystemExit("ERROR: src directory not found")
+
+          for lang_dir in sorted(src_root.iterdir()):
+              if not lang_dir.is_dir():
+                  continue
+
+              lang = lang_dir.name
+
+              for ext_path in sorted(lang_dir.iterdir()):
+                  if not ext_path.is_dir():
+                      continue
+
+                  ext = ext_path.name
+                  meta = parse_gradle(ext_path)
+
+                  if not meta:
+                      print(f"SKIP: cannot parse Gradle metadata for {ext}")
+                      continue
+
+                  version_name = f"{LIB_API_VERSION}.{meta['code']}"
+                  apk_filename = f"tachiyomi-{lang}.{ext}-v{version_name}.apk"
+
+                  copy_apk(ext_path, apk_filename)
+
+                  icon_src = find_icon(ext_path)
+                  icon_dest = icon_dir / f"{meta['pkg']}.png"
+
+                  if icon_src:
+                      ok = convert_icon(icon_src, icon_dest, 96)
+                      if ok:
+                          print(f"ICON OK: {icon_dest.name} from {icon_src}")
+                      else:
+                          print(f"WARN: icon conversion failed for {ext}")
+                  else:
+                      print(f"WARN: no icon found for {ext}")
+
+                  base_url = find_base_url(ext_path)
+
+                  md5_hex = hashlib.md5(meta["pkg"].encode()).hexdigest()
+                  source_id = int(md5_hex[:16], 16) & 0x7FFFFFFFFFFFFFFF
+
+                  icon_url = f"https://raw.githubusercontent.com/{repo_name}/repo/icon/{meta['pkg']}.png?v={version_name}"
+
+                  entry = {
+                      "name": meta["name"],
+                      "pkg": meta["pkg"],
+                      "apk": apk_filename,
+                      "lang": lang,
+                      "code": meta["code"],
+                      "version": version_name,
+                      "nsfw": meta["nsfw"],
+                      "hasReadme": 0,
+                      "hasChangelog": 0,
+                      "icon": icon_url,
+                      "sources": [
+                          {
+                              "id": source_id,
+                              "lang": lang,
+                              "name": meta["name"],
+                              "baseUrl": base_url,
+                              "versionId": 1,
+                          }
+                      ],
+                  }
+
+                  index.append(entry)
+
+          with open(repo_dir / "index.min.json", "w", encoding="utf-8") as f:
+              json.dump(index, f, separators=(",", ":"), ensure_ascii=False)
+
+          with open(repo_dir / "index.json", "w", encoding="utf-8") as f:
+              json.dump(index, f, indent=2, ensure_ascii=False)
+
+          repo_json = {
+              "meta": {
+                  "name": "Codegeasse Mihon Extensions",
+                  "shortName": "Codegeasse",
+                  "website": f"https://github.com/{repo_name}",
+                  "signingKeyFingerprint": signing_fingerprint,
+              }
+          }
+
+          with open(repo_dir / "repo.json", "w", encoding="utf-8") as f:
+              json.dump(repo_json, f, indent=2, ensure_ascii=False)
+
+          html_lines = [
+              "<!doctype html>",
+              "<html>",
+              "<head>",
+              "  <meta charset=\"utf-8\">",
+              "  <title>Codegeasse Mihon Extensions</title>",
+              "</head>",
+              "<body>",
+              "  <h1>Codegeasse Mihon Extensions</h1>",
+              "  <ul>",
+          ]
+
+          for item in index:
+              apk_name = item["apk"]
+              display_name = item["name"]
+              html_lines.append(
+                  f"    <li><a href=\"apk/{html.escape(apk_name)}\">{html.escape(display_name)} - {html.escape(apk_name)}</a></li>"
+              )
+
+          html_lines.extend(
+              [
+                  "  </ul>",
+                  "</body>",
+                  "</html>",
+              ]
+          )
+
+          with open(repo_dir / "index.html", "w", encoding="utf-8") as f:
+              f.write("\n".join(html_lines))
 
           print("")
           print(f"DONE: generated {len(index)} extension entries")
