@@ -28,12 +28,17 @@ class Comix : HttpSource() {
 
     override val supportsLatest = true
 
+    // Removed hardcoded User-Agent so Mihon automatically syncs it with WebView.
+    override fun headersBuilder(): Headers.Builder = super.headersBuilder()
+        .add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
+        .add("Accept-Language", "en-US,en;q=0.9")
+        .add("Referer", "$baseUrl/")
 
     // ---- Shared: Pull embedded React-Query cache out of a page -------
 
     private fun queries(document: Document): JSONObject {
         val script = document.selectFirst("script#initial-data")
-            ?: throw Exception("initial-data script not found - page structure may have changed")
+            ?: throw Exception("initial-data script not found - page structure may have changed. Check WebView.")
         return JSONObject(script.data()).getJSONObject("queries")
     }
 
@@ -47,7 +52,7 @@ class Comix : HttpSource() {
     private fun asMangaArray(value: Any?): JSONArray = when (value) {
         is JSONArray -> value
         is JSONObject -> value.optJSONArray("items") ?: JSONArray()
-        else -> JSONArray() // Fallback empty array
+        else -> JSONArray()
     }
 
     private fun JSONObject.toSManga(): SManga = SManga.create().apply {
@@ -67,15 +72,19 @@ class Comix : HttpSource() {
     // ---- Popular ----------------------------------------------------------
 
     override fun popularMangaRequest(page: Int): Request = 
-        GET("$baseUrl/search?sort=trending&page=$page", headers)
+        GET("$baseUrl/", headers) // Use home page directly to avoid 404 errors
 
     override fun popularMangaParse(response: Response): MangasPage {
         val q = queries(response.asJsoup())
-        val result = findQuery(q, "\"manga\"", "\"top\"") ?: findQuery(q, "\"search\"") ?: findQuery(q, "\"list\"")
+        // Grab the trending/top array from the home page state
+        val result = findQuery(q, "\"manga\"", "\"top\"", "\"trending\"") 
+            ?: findQuery(q, "\"manga\"", "\"top\"") 
+            ?: findQuery(q, "\"manga\"")
+            
         val list = asMangaArray(result)
         val mangas = (0 until list.length()).map { list.getJSONObject(it).toSManga() }
-        val hasNextPage = (result as? JSONObject)?.optJSONObject("meta")?.optBoolean("hasNext", false) ?: (list.length() > 0)
-        return MangasPage(mangas, hasNextPage)
+        // The home page 'trending' section is usually a fixed list of 50 items, so no pagination here.
+        return MangasPage(mangas, false)
     }
 
     // ---- Latest -----------------------------------------------------------
@@ -85,11 +94,13 @@ class Comix : HttpSource() {
 
     override fun latestUpdatesParse(response: Response): MangasPage {
         val q = queries(response.asJsoup())
-        val result = findQuery(q, "\"list\"", "\"hot\"") ?: findQuery(q, "\"manga\"")
+        // Grab the latest updates list array from the state
+        val result = findQuery(q, "\"manga\"", "\"list\"") ?: findQuery(q, "\"list\"")
         val list = asMangaArray(result)
         val mangas = (0 until list.length()).map { list.getJSONObject(it).toSManga() }
+        
         val meta = (result as? JSONObject)?.optJSONObject("meta")
-        val hasNextPage = meta?.optBoolean("hasNext", false) ?: (list.length() > 0)
+        val hasNextPage = meta?.optBoolean("hasNext", false) ?: (list.length() >= 30)
         return MangasPage(mangas, hasNextPage)
     }
 
@@ -99,12 +110,16 @@ class Comix : HttpSource() {
         GET("$baseUrl/search?q=$query&page=$page", headers)
 
     override fun searchMangaParse(response: Response): MangasPage {
+        if (response.code == 404) {
+            return MangasPage(emptyList(), false) // Gracefully handle 404 if /search doesn't exist
+        }
         val q = queries(response.asJsoup())
-        val result = findQuery(q, "\"search\"") ?: findQuery(q, "\"list\"")
+        val result = findQuery(q, "\"search\"") ?: findQuery(q, "\"list\"") ?: findQuery(q, "\"manga\"")
         val list = asMangaArray(result)
         val mangas = (0 until list.length()).map { list.getJSONObject(it).toSManga() }
+        
         val meta = (result as? JSONObject)?.optJSONObject("meta")
-        val hasNextPage = meta?.optBoolean("hasNext", false) ?: (list.length() > 0)
+        val hasNextPage = meta?.optBoolean("hasNext", false) ?: (list.length() >= 30)
         return MangasPage(mangas, hasNextPage)
     }
 
@@ -119,7 +134,6 @@ class Comix : HttpSource() {
             description = document.selectFirst("meta[property=og:description]")?.attr("content")
             thumbnail_url = document.selectFirst("meta[property=og:image]")?.attr("content")
 
-            // Grab advanced details from the state payload
             try {
                 val q = queries(document)
                 for (key in q.keys()) {
@@ -136,7 +150,7 @@ class Comix : HttpSource() {
                     }
                 }
             } catch (e: Exception) {
-                // Ignore if specific manga query is not structured as expected
+                // Ignore
             }
         }
     }
@@ -150,7 +164,6 @@ class Comix : HttpSource() {
         
         var chaptersArray: JSONArray? = null
         
-        // Scan JSON queries for the chapters list array
         for (key in q.keys()) {
             val value = q.get(key)
             val items = when (value) {
@@ -190,8 +203,6 @@ class Comix : HttpSource() {
                 chapter_number = chapNum.toFloatOrNull() ?: -1f
                 
                 val id = obj.optString("id")
-                
-                // Construct standard frontend route to hit the chapter's HTML
                 val safeChapNum = if (chapNum.isNotBlank() && chapNum != "null") chapNum else "0"
                 url = if (obj.has("url") && obj.getString("url").isNotBlank()) {
                     obj.getString("url")
@@ -209,7 +220,6 @@ class Comix : HttpSource() {
     override fun pageListParse(response: Response): List<Page> {
         val document = response.asJsoup()
         
-        // 1. Try fetching from the DOM first, in case images still render directly
         val domImgs = document.select("img.rpage-page__img")
         if (domImgs.isNotEmpty()) {
             return domImgs.mapIndexed { index, element ->
@@ -217,7 +227,6 @@ class Comix : HttpSource() {
             }
         }
         
-        // 2. Fallback to scraping the embedded state data for image array
         val q = queries(document)
         for (key in q.keys()) {
             if (key.contains("\"chapter\"") || key.contains("\"images\"") || key.contains("\"pages\"")) {
@@ -243,7 +252,7 @@ class Comix : HttpSource() {
             }
         }
         
-        throw Exception("No pages found. Cloudflare might be blocking the request or the site structure has drastically changed.")
+        throw Exception("No pages found in initial-data payload.")
     }
 
     override fun imageUrlParse(response: Response): String =
