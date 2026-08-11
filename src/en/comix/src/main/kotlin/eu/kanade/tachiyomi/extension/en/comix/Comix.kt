@@ -160,7 +160,7 @@ class Comix : HttpSource() {
         
         var chaptersArray: JSONArray? = null
         
-        // Aggressively hunt for the chapters array, even if it's nested in InfiniteQuery pagination
+        // Aggressively hunt for the chapters array
         for (key in q.keys()) {
             val value = q.get(key)
             var items: JSONArray? = null
@@ -168,7 +168,7 @@ class Comix : HttpSource() {
             if (value is JSONArray) {
                 items = value
             } else if (value is JSONObject) {
-                // Check if it's paginated (React InfiniteQuery)
+                // Handle React InfiniteQuery pagination
                 if (value.has("pages")) {
                     val pagesArr = value.optJSONArray("pages")
                     if (pagesArr != null && pagesArr.length() > 0) {
@@ -245,10 +245,10 @@ class Comix : HttpSource() {
                 
                 url = if (obj.has("url") && obj.getString("url").isNotBlank()) {
                     obj.getString("url")
-                } else if (id.isNotBlank() && id != "null") {
-                    "$mangaUrl/$id-chapter-$safeChapNum"
                 } else if (hid.isNotBlank() && hid != "null") {
                     "$mangaUrl/$hid-chapter-$safeChapNum"
+                } else if (id.isNotBlank() && id != "null") {
+                    "$mangaUrl/$id-chapter-$safeChapNum"
                 } else {
                     mangaUrl
                 }
@@ -263,39 +263,94 @@ class Comix : HttpSource() {
     override fun pageListParse(response: Response): List<Page> {
         val document = response.asJsoup()
         
-        val domImgs = document.select("img.rpage-page__img")
+        // 1. DOM Fallback
+        val domImgs = document.select("img.rpage-page__img, .page-image img, img.chapter-img")
         if (domImgs.isNotEmpty()) {
             return domImgs.mapIndexed { index, element ->
                 Page(index, imageUrl = element.attr("abs:src"))
             }
         }
         
-        val q = queries(document)
-        for (key in q.keys()) {
-            if (key.contains("\"chapter", ignoreCase = true) || key.contains("\"images\"") || key.contains("\"pages\"")) {
-                val value = q.get(key)
-                if (value is JSONObject) {
-                    val imagesArr = value.optJSONArray("images") ?: value.optJSONArray("pages") ?: value.optJSONObject("chapter")?.optJSONArray("images")
-                    if (imagesArr != null && imagesArr.length() > 0) {
-                        val pages = mutableListOf<Page>()
-                        for (i in 0 until imagesArr.length()) {
-                            val imgObj = imagesArr.get(i)
-                            val url = if (imgObj is JSONObject) {
-                                imgObj.optString("url", imgObj.optString("src"))
-                            } else {
-                                imgObj.toString()
-                            }
-                            if (url.isNotBlank() && url != "null") {
-                                pages.add(Page(i, imageUrl = url))
-                            }
-                        }
-                        if (pages.isNotEmpty()) return pages
-                    }
+        // 2. Aggressive Recursive JSON Hunter
+        val script = document.selectFirst("script#initial-data")
+        if (script != null) {
+            try {
+                val root = JSONObject(script.data())
+                val queries = root.optJSONObject("queries") ?: root
+                
+                val extractedUrls = findImageUrlsRecursively(queries)
+                if (extractedUrls.isNotEmpty()) {
+                    return extractedUrls.mapIndexed { i, url -> Page(i, imageUrl = url) }
                 }
+            } catch (e: Exception) {
+                // Ignore exception and fall back to regex
+            }
+            
+            // 3. Ultimate Regex Fallback 
+            val text = script.data()
+            val urlRegex = Regex(""""(?:url|src|image)"\s*:\s*"([^"]+)"""")
+            val matches = urlRegex.findAll(text)
+            val cdnUrls = matches.map { it.groupValues[1] }
+                .filter { it.contains("wowpic") || it.contains("comix.to/i") || it.contains("static") }
+                .toList()
+                
+            if (cdnUrls.isNotEmpty()) {
+                return cdnUrls.distinct().mapIndexed { i, url -> Page(i, imageUrl = url) }
             }
         }
         
         throw Exception("No pages found in initial-data payload. Site structure may have changed.")
+    }
+
+    private fun findImageUrlsRecursively(obj: Any?): List<String> {
+        if (obj is JSONObject) {
+            // Check known array names first
+            listOf("images", "pages", "blocks", "chapter_images", "data").forEach { arrKey ->
+                val arr = obj.optJSONArray(arrKey)
+                if (arr != null) {
+                    val urls = extractUrlsFromArray(arr, strict = false)
+                    if (urls.isNotEmpty()) return urls
+                }
+            }
+            
+            // Dig deeper if not found
+            for (key in obj.keys()) {
+                val found = findImageUrlsRecursively(obj.get(key))
+                if (found.isNotEmpty()) return found
+            }
+        } else if (obj is JSONArray) {
+            // If it's an unnamed array containing URLs directly
+            val stringUrls = extractUrlsFromArray(obj, strict = true)
+            if (stringUrls.isNotEmpty()) return stringUrls
+            
+            // Dig into array objects
+            for (i in 0 until obj.length()) {
+                val found = findImageUrlsRecursively(obj.get(i))
+                if (found.isNotEmpty()) return found
+            }
+        }
+        return emptyList()
+    }
+
+    private fun extractUrlsFromArray(arr: JSONArray, strict: Boolean): List<String> {
+        val urls = mutableListOf<String>()
+        for (i in 0 until arr.length()) {
+            val item = arr.get(i)
+            val url = if (item is JSONObject) {
+                item.optString("url").ifBlank { item.optString("src") }.ifBlank { item.optString("image") }
+            } else if (item is String) {
+                item
+            } else {
+                ""
+            }
+            
+            if (url.startsWith("http")) {
+                if (!strict || url.contains("wowpic") || url.contains("static") || url.matches(Regex(".*\\.(jpg|png|webp|avif|jpeg).*"))) {
+                    urls.add(url)
+                }
+            }
+        }
+        return urls
     }
 
     override fun imageUrlParse(response: Response): String =
