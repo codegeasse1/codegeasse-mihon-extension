@@ -34,37 +34,34 @@ jobs:
           sudo apt-get install -y imagemagick webp
 
       - name: Normalize source icons before debug build
-        shell: bash
         run: |
-          set -e
+          python3 << "PY"
+          import os
+          import shutil
+          import subprocess
+          import tempfile
+          from pathlib import Path
 
-          if command -v magick >/dev/null 2>&1; then
-            IM="magick"
-          else
-            IM="convert"
-          fi
+          IMAGE_EXTS = {".png", ".webp", ".jpg", ".jpeg"}
 
-          normalize_icon() {
-            local input="$1"
-            local output="$2"
-          ...}</a>'
-              )
+          def image_tool():
+              if shu...te("\n".join(html_lines))
 
-          html_lines.extend([
-              "  </pre>",
-              "</body>",
-              "</html>"
-          ])
+          print("")
+          print(f"DONE: generated {len(index)} extension entries")
+          print("")
+          print("=== repo files ===")
+          for p in sorted(repo_dir.rglob("*")):
+              if p.is_file():
+                  print(p)
+          print("")
+          print("=== index.min.json ===")
+          print((repo_dir / "index.min.json").read_text(encoding="utf-8"))
+          print("")
+          print("=== repo.json ===")
+          print((repo_dir / "repo.json").read_text(encoding="utf-8"))
 
-          with open("repo/index.html", "w", encoding="utf-8") as f:
-              f.write("\n".join(html_lines))
-
-          print(f"\nDONE: generated {len(index)} extension(s)")
-          print("\n=== index.min.json ===")
-          print(open("repo/index.min.json", encoding="utf-8").read())
-          print("\n=== repo.json ===")
-          print(open("repo/repo.json", encoding="utf-8").read())
-          PYEOF
+          PY
 
       - name: Publish to repo branch
         run: |
