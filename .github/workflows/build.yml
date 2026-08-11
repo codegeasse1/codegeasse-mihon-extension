@@ -9,41 +9,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: zulu
-          java-version: 17
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.10.2
-
-      - name: Build every extension (debug APKs)
-        run: gradle assembleDebug --stacktrace
-
-      - name: Upload APK artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: extension-apks
-          path: '**/build/outputs/apk/**/*.apk'
-          if-no-files-found: error
-
-  release:
-    needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout
@@ -63,203 +28,42 @@ jobs:
         with:
           gradle-version: 8.10.2
 
-      - name: Decode Keystore
-        run: echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > keystore.jks
-
-      - name: Build and Sign Release APKs
-        run: >
-          gradle assembleRelease --stacktrace
-          -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/keystore.jks
-          -Pandroid.injected.signing.store.password=${{ secrets.KEY_STORE_PASSWORD }}
-          -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }}
-          -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
-
-      - name: Collect APKs and Icons
+      - name: Install image tools
         run: |
-          mkdir -p repo/apk
-          mkdir -p repo/icon
+          sudo apt-get update
+          sudo apt-get install -y imagemagick webp
 
-          for ext_dir in src/*/*/; do
-            [ -d "$ext_dir" ] || continue
-            ext_name=$(basename "$ext_dir")
-            lang=$(basename "$(dirname "$ext_dir")")
-
-            # ── Find gradle file ──
-            gradle_file=""
-            if [ -f "${ext_dir}build.gradle.kts" ]; then
-              gradle_file="${ext_dir}build.gradle.kts"
-            elif [ -f "${ext_dir}build.gradle" ]; then
-              gradle_file="${ext_dir}build.gradle"
-            else
-              echo "SKIP: No gradle file for ${ext_name}"
-              continue
-            fi
-
-            # ── Read applicationId ──
-            app_id=$(grep -oP 'applicationId\s*=\s*"\K[^"]+' "$gradle_file" || echo "")
-            if [ -z "$app_id" ]; then
-              echo "SKIP: No applicationId for ${ext_name}"
-              continue
-            fi
-
-            # ── Copy APK (already renamed by applicationVariants.all in gradle) ──
-            apk_source=$(find "${ext_dir}build/outputs/apk/release/" -name "*.apk" 2>/dev/null | head -1)
-            if [ -n "$apk_source" ]; then
-              apk_filename=$(basename "$apk_source")
-              cp "$apk_source" "repo/apk/${apk_filename}"
-              echo "APK OK: ${apk_filename}"
-            else
-              echo "FAIL: No APK for ${ext_name}"
-              continue
-            fi
-
-            # ── Copy icon named as full package ──
-            icon_src=""
-            for res in xxxhdpi xxhdpi xhdpi hdpi mdpi; do
-              candidate="${ext_dir}src/main/res/mipmap-${res}/ic_launcher.png"
-              if [ -f "$candidate" ]; then
-                icon_src="$candidate"
-                break
-              fi
-            done
-            if [ -n "$icon_src" ]; then
-              cp "$icon_src" "repo/icon/${app_id}.png"
-              echo "ICON OK: ${app_id}.png"
-            else
-              echo "WARN: No icon for ${ext_name}"
-            fi
-          done
-
-          echo ""
-          echo "=== APKs ==="
-          ls -la repo/apk/
-          echo "=== Icons ==="
-          ls -la repo/icon/
-
-      - name: Generate index.min.json
+      - name: Normalize source icons before debug build
+        shell: bash
         run: |
-          python3 << 'PYEOF'
-          import os, re, json, hashlib
+          set -e
 
-          LIB_API_VERSION = "1.4"
+          if command -v magick >/dev/null 2>&1; then
+            IM="magick"
+          else
+            IM="convert"
+          fi
 
-          index = []
-          src_root = "src"
+          normalize_icon() {
+            local input="$1"
+            local output="$2"
+          ...}</a>'
+              )
 
-          if not os.path.isdir(src_root):
-              print("ERROR: src/ directory not found")
-              exit(1)
+          html_lines.extend([
+              "  </pre>",
+              "</body>",
+              "</html>"
+          ])
 
-          for lang in sorted(os.listdir(src_root)):
-              lang_path = os.path.join(src_root, lang)
-              if not os.path.isdir(lang_path):
-                  continue
+          with open("repo/index.html", "w", encoding="utf-8") as f:
+              f.write("\n".join(html_lines))
 
-              for ext in sorted(os.listdir(lang_path)):
-                  ext_path = os.path.join(lang_path, ext)
-                  if not os.path.isdir(ext_path):
-                      continue
-
-                  # ── Find gradle file ──
-                  gradle = os.path.join(ext_path, "build.gradle.kts")
-                  if not os.path.exists(gradle):
-                      gradle = os.path.join(ext_path, "build.gradle")
-                  if not os.path.exists(gradle):
-                      print(f"SKIP: No gradle file for {ext}")
-                      continue
-
-                  gc = open(gradle).read()
-
-                  # ── Parse metadata ──
-                  name_m = re.search(r'val\s+extName\s*=\s*"([^"]+)"', gc)
-                  code_m = re.search(r'val\s+extVersionCode\s*=\s*(\d+)', gc)
-                  nsfw_m = re.search(r'val\s+isNsfw\s*=\s*(true|false)', gc)
-                  pkg_m  = re.search(r'applicationId\s*=\s*"([^"]+)"', gc)
-
-                  if not name_m:
-                      print(f"SKIP: No extName for {ext}")
-                      continue
-                  if not code_m:
-                      print(f"SKIP: No extVersionCode for {ext}")
-                      continue
-                  if not pkg_m:
-                      print(f"SKIP: No applicationId for {ext}")
-                      continue
-
-                  ext_name_val = name_m.group(1)
-                  code_val     = int(code_m.group(1))
-                  pkg_val      = pkg_m.group(1)
-                  nsfw_val     = 2 if (nsfw_m and nsfw_m.group(1) == "true") else 0
-
-                  # ── Version: libApiVersion.versionCode ──
-                  version_name = f"{LIB_API_VERSION}.{code_val}"
-
-                  # ── APK filename (must match what Gradle outputs) ──
-                  apk_filename = f"tachiyomi-{lang}.{ext}-v{version_name}.apk"
-
-                  # ── Verify APK exists ──
-                  apk_path = os.path.join("repo", "apk", apk_filename)
-                  if os.path.exists(apk_path):
-                      print(f"OK: {apk_filename}")
-                  else:
-                      print(f"WARN: APK not found: {apk_filename}")
-
-                  # ── Find baseUrl from Kotlin source ──
-                  base_url = ""
-                  kt_dir = os.path.join(ext_path, "src", "main", "kotlin")
-                  if os.path.isdir(kt_dir):
-                      for root, dirs, files in os.walk(kt_dir):
-                          for f in files:
-                              if f.endswith(".kt"):
-                                  kt_content = open(os.path.join(root, f)).read()
-                                  url_m = re.search(
-                                      r'override\s+val\s+baseUrl\s*=\s*"([^"]+)"',
-                                      kt_content
-                                  )
-                                  if url_m:
-                                      base_url = url_m.group(1)
-                                      break
-                          if base_url:
-                              break
-
-                  # ── Source ID (64-bit positive long from MD5 of package name) ──
-                  md5_hex = hashlib.md5(pkg_val.encode()).hexdigest()
-                  src_id = int(md5_hex[:16], 16) & 0x7FFFFFFFFFFFFFFF
-
-                  # ── Build entry ──
-                  entry = {
-                      "name": ext_name_val,
-                      "pkg": pkg_val,
-                      "apk": apk_filename,
-                      "lang": lang,
-                      "code": code_val,
-                      "version": version_name,
-                      "nsfw": nsfw_val,
-                      "hasReadme": 0,
-                      "hasChangelog": 0,
-                      "sources": [
-                          {
-                              "id": src_id,
-                              "lang": lang,
-                              "name": ext_name_val,
-                              "baseUrl": base_url,
-                              "versionId": 1
-                          }
-                      ]
-                  }
-                  index.append(entry)
-
-          # ── Write files ──
-          os.makedirs("repo", exist_ok=True)
-
-          with open("repo/index.min.json", "w") as f:
-              json.dump(index, f, separators=(",", ":"))
-
-          with open("repo/index.json", "w") as f:
-              json.dump(index, f, indent=2)
-
-          print(f"\nDONE: {len(index)} extension(s)")
-          print(open("repo/index.min.json").read())
+          print(f"\nDONE: generated {len(index)} extension(s)")
+          print("\n=== index.min.json ===")
+          print(open("repo/index.min.json", encoding="utf-8").read())
+          print("\n=== repo.json ===")
+          print(open("repo/repo.json", encoding="utf-8").read())
           PYEOF
 
       - name: Publish to repo branch
