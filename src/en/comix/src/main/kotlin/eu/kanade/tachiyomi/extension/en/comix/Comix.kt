@@ -239,7 +239,6 @@ class Comix : HttpSource() {
                 val hid = obj.optString("hid")
                 val safeChapNum = if (chapNum.isNotBlank() && chapNum != "null") chapNum else "0"
                 
-                // Prioritize numeric ID for the API fetch to work cleanly
                 url = if (id.isNotBlank() && id != "null") {
                     "$mangaUrl/$id-chapter-$safeChapNum"
                 } else if (hid.isNotBlank() && hid != "null") {
@@ -257,10 +256,8 @@ class Comix : HttpSource() {
 
     // ---- Pages ------------------------------------------------------------
 
-    // Hijack the request to hit the hidden API you found in the Network tab
     override fun pageListRequest(chapter: SChapter): Request {
         val url = chapter.url
-        // Extract the ID (e.g. "11187056" from "/title/rge6g-.../11187056-chapter-1")
         val chapterId = Regex("""/([^/]+)-chapter-""").find(url)?.groupValues?.get(1)
         
         if (chapterId != null) {
@@ -274,7 +271,8 @@ class Comix : HttpSource() {
     }
 
     override fun pageListParse(response: Response): List<Page> {
-        val bodyStr = response.body.string()
+        // Kotlin fix: Safe call on response.body with fallback to empty string
+        val bodyStr = response.body?.string() ?: ""
         val contentType = response.header("Content-Type") ?: ""
 
         // 1. Process the API JSON Response
