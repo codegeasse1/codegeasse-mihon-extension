@@ -160,7 +160,6 @@ class Comix : HttpSource() {
         
         var chaptersArray: JSONArray? = null
         
-        // Aggressively hunt for the chapters array
         for (key in q.keys()) {
             val value = q.get(key)
             var items: JSONArray? = null
@@ -168,7 +167,6 @@ class Comix : HttpSource() {
             if (value is JSONArray) {
                 items = value
             } else if (value is JSONObject) {
-                // Handle React InfiniteQuery pagination
                 if (value.has("pages")) {
                     val pagesArr = value.optJSONArray("pages")
                     if (pagesArr != null && pagesArr.length() > 0) {
@@ -191,7 +189,6 @@ class Comix : HttpSource() {
                 }
             }
             
-            // Validate that we found chapters, not a manga array
             if (items != null && items.length() > 0) {
                 val firstItem = items.optJSONObject(0)
                 if (firstItem != null && !firstItem.has("synopsis") && !firstItem.has("poster")) {
@@ -203,7 +200,6 @@ class Comix : HttpSource() {
             }
         }
         
-        // Backup DOM Scraper just in case the JSON payload completely changes
         if (chaptersArray == null) {
             val domChapters = document.select("a[href*=-chapter-]")
             if (domChapters.isNotEmpty()) {
@@ -215,7 +211,7 @@ class Comix : HttpSource() {
                     }
                 }.sortedByDescending { it.chapter_number }
             }
-            throw Exception("Could not find chapters in initial-data payload. Please report this to the developer.")
+            throw Exception("Could not find chapters. Site layout may have changed.")
         }
         
         val chapters = mutableListOf<SChapter>()
@@ -243,12 +239,13 @@ class Comix : HttpSource() {
                 val hid = obj.optString("hid")
                 val safeChapNum = if (chapNum.isNotBlank() && chapNum != "null") chapNum else "0"
                 
-                url = if (obj.has("url") && obj.getString("url").isNotBlank()) {
-                    obj.getString("url")
+                // Prioritize numeric ID for the API fetch to work cleanly
+                url = if (id.isNotBlank() && id != "null") {
+                    "$mangaUrl/$id-chapter-$safeChapNum"
                 } else if (hid.isNotBlank() && hid != "null") {
                     "$mangaUrl/$hid-chapter-$safeChapNum"
-                } else if (id.isNotBlank() && id != "null") {
-                    "$mangaUrl/$id-chapter-$safeChapNum"
+                } else if (obj.has("url") && obj.getString("url").isNotBlank()) {
+                    obj.getString("url")
                 } else {
                     mangaUrl
                 }
@@ -260,10 +257,39 @@ class Comix : HttpSource() {
 
     // ---- Pages ------------------------------------------------------------
 
-    override fun pageListParse(response: Response): List<Page> {
-        val document = response.asJsoup()
+    // Hijack the request to hit the hidden API you found in the Network tab
+    override fun pageListRequest(chapter: SChapter): Request {
+        val url = chapter.url
+        // Extract the ID (e.g. "11187056" from "/title/rge6g-.../11187056-chapter-1")
+        val chapterId = Regex("""/([^/]+)-chapter-""").find(url)?.groupValues?.get(1)
         
-        // 1. DOM Fallback
+        if (chapterId != null) {
+            val apiHeaders = headersBuilder()
+                .set("Accept", "application/json, text/plain, */*")
+                .build()
+            return GET("$baseUrl/api/v1/chapters/$chapterId", apiHeaders)
+        }
+        
+        return GET(baseUrl + url, headers)
+    }
+
+    override fun pageListParse(response: Response): List<Page> {
+        val bodyStr = response.body.string()
+        val contentType = response.header("Content-Type") ?: ""
+
+        // 1. Process the API JSON Response
+        if (contentType.contains("json", ignoreCase = true) || bodyStr.trim().startsWith("{")) {
+            val root = JSONObject(bodyStr)
+            val urls = findImageUrlsRecursively(root)
+            if (urls.isNotEmpty()) {
+                return urls.mapIndexed { i, url -> Page(i, imageUrl = url) }
+            }
+            throw Exception("No pages found in API response. Layout may have changed.")
+        }
+
+        // 2. Fallback to HTML parsing (just in case)
+        val document = org.jsoup.Jsoup.parse(bodyStr, response.request.url.toString())
+        
         val domImgs = document.select("img.rpage-page__img, .page-image img, img.chapter-img")
         if (domImgs.isNotEmpty()) {
             return domImgs.mapIndexed { index, element ->
@@ -271,7 +297,6 @@ class Comix : HttpSource() {
             }
         }
         
-        // 2. Aggressive Recursive JSON Hunter
         val script = document.selectFirst("script#initial-data")
         if (script != null) {
             try {
@@ -282,30 +307,15 @@ class Comix : HttpSource() {
                 if (extractedUrls.isNotEmpty()) {
                     return extractedUrls.mapIndexed { i, url -> Page(i, imageUrl = url) }
                 }
-            } catch (e: Exception) {
-                // Ignore exception and fall back to regex
-            }
-            
-            // 3. Ultimate Regex Fallback 
-            val text = script.data()
-            val urlRegex = Regex(""""(?:url|src|image)"\s*:\s*"([^"]+)"""")
-            val matches = urlRegex.findAll(text)
-            val cdnUrls = matches.map { it.groupValues[1] }
-                .filter { it.contains("wowpic") || it.contains("comix.to/i") || it.contains("static") }
-                .toList()
-                
-            if (cdnUrls.isNotEmpty()) {
-                return cdnUrls.distinct().mapIndexed { i, url -> Page(i, imageUrl = url) }
-            }
+            } catch (e: Exception) {}
         }
         
-        throw Exception("No pages found in initial-data payload. Site structure may have changed.")
+        throw Exception("No pages found. Cloudflare verification might be required.")
     }
 
     private fun findImageUrlsRecursively(obj: Any?): List<String> {
         if (obj is JSONObject) {
-            // Check known array names first
-            listOf("images", "pages", "blocks", "chapter_images", "data").forEach { arrKey ->
+            listOf("images", "pages", "blocks", "chapter_images", "data", "list", "chapter").forEach { arrKey ->
                 val arr = obj.optJSONArray(arrKey)
                 if (arr != null) {
                     val urls = extractUrlsFromArray(arr, strict = false)
@@ -313,17 +323,14 @@ class Comix : HttpSource() {
                 }
             }
             
-            // Dig deeper if not found
             for (key in obj.keys()) {
                 val found = findImageUrlsRecursively(obj.get(key))
                 if (found.isNotEmpty()) return found
             }
         } else if (obj is JSONArray) {
-            // If it's an unnamed array containing URLs directly
             val stringUrls = extractUrlsFromArray(obj, strict = true)
             if (stringUrls.isNotEmpty()) return stringUrls
             
-            // Dig into array objects
             for (i in 0 until obj.length()) {
                 val found = findImageUrlsRecursively(obj.get(i))
                 if (found.isNotEmpty()) return found
@@ -345,7 +352,7 @@ class Comix : HttpSource() {
             }
             
             if (url.startsWith("http")) {
-                if (!strict || url.contains("wowpic") || url.contains("static") || url.matches(Regex(".*\\.(jpg|png|webp|avif|jpeg).*"))) {
+                if (!strict || url.contains("wowpic") || url.contains("comix.to") || url.matches(Regex(".*\\.(jpg|png|webp|avif|jpeg).*"))) {
                     urls.add(url)
                 }
             }
