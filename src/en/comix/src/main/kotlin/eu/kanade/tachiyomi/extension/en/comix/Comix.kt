@@ -49,14 +49,36 @@ class Comix : HttpSource() {
         return null
     }
 
-    private fun asMangaArray(value: Any?): JSONArray = when (value) {
-        is JSONArray -> value
-        is JSONObject -> value.optJSONArray("items") ?: JSONArray()
-        else -> JSONArray()
+    private fun extractItems(value: Any?): JSONArray? {
+        if (value is JSONArray) return value
+        if (value is JSONObject) {
+            if (value.has("pages")) {
+                val pagesArr = value.optJSONArray("pages")
+                if (pagesArr != null && pagesArr.length() > 0) {
+                    val combined = JSONArray()
+                    for (p in 0 until pagesArr.length()) {
+                        val pObj = pagesArr.get(p)
+                        val pItems = when (pObj) {
+                            is JSONArray -> pObj
+                            is JSONObject -> pObj.optJSONArray("items") ?: pObj.optJSONArray("data") ?: pObj.optJSONArray("chapters")
+                            else -> null
+                        }
+                        if (pItems != null) {
+                            for (i in 0 until pItems.length()) combined.put(pItems.get(i))
+                        }
+                    }
+                    if (combined.length() > 0) return combined
+                }
+            }
+            return value.optJSONArray("items") ?: value.optJSONArray("data") ?: value.optJSONArray("chapters")
+        }
+        return null
     }
 
+    private fun asMangaArray(value: Any?): JSONArray = extractItems(value) ?: JSONArray()
+
     private fun JSONObject.toSManga(): SManga = SManga.create().apply {
-        url = this@toSManga.optString("url")
+        url = this@toSManga.optString("url").ifBlank { "/title/${this@toSManga.optString("hid")}" }
         title = this@toSManga.optString("title")
         thumbnail_url = this@toSManga.optJSONObject("poster")?.optString("medium")
         description = this@toSManga.optString("synopsis").takeIf { it.isNotBlank() }
@@ -160,39 +182,14 @@ class Comix : HttpSource() {
         
         var chaptersArray: JSONArray? = null
         
+        // 1. Strictly look for items with chapter identifiers to avoid grabbing genres/tags
         for (key in q.keys()) {
-            val value = q.get(key)
-            var items: JSONArray? = null
-            
-            if (value is JSONArray) {
-                items = value
-            } else if (value is JSONObject) {
-                if (value.has("pages")) {
-                    val pagesArr = value.optJSONArray("pages")
-                    if (pagesArr != null && pagesArr.length() > 0) {
-                        val combined = JSONArray()
-                        for (p in 0 until pagesArr.length()) {
-                            val pObj = pagesArr.get(p)
-                            val pItems = when (pObj) {
-                                is JSONArray -> pObj
-                                is JSONObject -> pObj.optJSONArray("items") ?: pObj.optJSONArray("data") ?: pObj.optJSONArray("chapters")
-                                else -> null
-                            }
-                            if (pItems != null) {
-                                for (i in 0 until pItems.length()) combined.put(pItems.get(i))
-                            }
-                        }
-                        if (combined.length() > 0) items = combined
-                    }
-                } else {
-                    items = value.optJSONArray("items") ?: value.optJSONArray("data") ?: value.optJSONArray("chapters")
-                }
-            }
-            
+            val items = extractItems(q.get(key))
             if (items != null && items.length() > 0) {
                 val firstItem = items.optJSONObject(0)
-                if (firstItem != null && !firstItem.has("synopsis") && !firstItem.has("poster")) {
-                    if (firstItem.has("chap") || firstItem.has("chapter") || firstItem.has("vol") || firstItem.has("id")) {
+                // Exclude mangas (synopsis) and genres (slug)
+                if (firstItem != null && !firstItem.has("synopsis") && !firstItem.has("slug")) {
+                    if (firstItem.has("chap") || firstItem.has("chapter") || firstItem.has("vol")) {
                         chaptersArray = items
                         break
                     }
@@ -200,6 +197,23 @@ class Comix : HttpSource() {
             }
         }
         
+        // 2. Fallback if site uses chapter lists without chap numbers (oneshots)
+        if (chaptersArray == null) {
+            for (key in q.keys()) {
+                if (key.contains("chapter", ignoreCase = true)) {
+                    val items = extractItems(q.get(key))
+                    if (items != null && items.length() > 0) {
+                        val firstItem = items.optJSONObject(0)
+                        if (firstItem != null && !firstItem.has("synopsis") && !firstItem.has("slug")) {
+                            chaptersArray = items
+                            break
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 3. Backup DOM Scraper just in case the JSON payload completely changes
         if (chaptersArray == null) {
             val domChapters = document.select("a[href*=-chapter-]")
             if (domChapters.isNotEmpty()) {
@@ -211,7 +225,7 @@ class Comix : HttpSource() {
                     }
                 }.sortedByDescending { it.chapter_number }
             }
-            throw Exception("Could not find chapters. Site layout may have changed.")
+            throw Exception("Could not find chapters in initial-data payload.")
         }
         
         val chapters = mutableListOf<SChapter>()
@@ -239,6 +253,7 @@ class Comix : HttpSource() {
                 val hid = obj.optString("hid")
                 val safeChapNum = if (chapNum.isNotBlank() && chapNum != "null") chapNum else "0"
                 
+                // Prioritize numeric ID for the API fetch to work cleanly
                 url = if (id.isNotBlank() && id != "null") {
                     "$mangaUrl/$id-chapter-$safeChapNum"
                 } else if (hid.isNotBlank() && hid != "null") {
@@ -260,9 +275,11 @@ class Comix : HttpSource() {
         val url = chapter.url
         val chapterId = Regex("""/([^/]+)-chapter-""").find(url)?.groupValues?.get(1)
         
-        if (chapterId != null) {
+        // Ensure we only pass a clean numeric ID to the API to prevent 403 errors
+        if (chapterId != null && chapterId.matches(Regex("""^\d+$"""))) {
             val apiHeaders = headersBuilder()
                 .set("Accept", "application/json, text/plain, */*")
+                .set("Referer", baseUrl + url)
                 .build()
             return GET("$baseUrl/api/v1/chapters/$chapterId", apiHeaders)
         }
@@ -271,7 +288,6 @@ class Comix : HttpSource() {
     }
 
     override fun pageListParse(response: Response): List<Page> {
-        // Kotlin fix: Safe call on response.body with fallback to empty string
         val bodyStr = response.body?.string() ?: ""
         val contentType = response.header("Content-Type") ?: ""
 
