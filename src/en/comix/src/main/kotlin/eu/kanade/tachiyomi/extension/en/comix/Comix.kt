@@ -28,12 +28,6 @@ class Comix : HttpSource() {
 
     override val supportsLatest = true
 
-    // Standardize headers to bypass Cloudflare 403 blocks
-    override fun headersBuilder(): Headers.Builder = super.headersBuilder()
-        .add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-        .add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
-        .add("Accept-Language", "en-US,en;q=0.5")
-        .add("Referer", "$baseUrl/")
 
     // ---- Shared: Pull embedded React-Query cache out of a page -------
 
