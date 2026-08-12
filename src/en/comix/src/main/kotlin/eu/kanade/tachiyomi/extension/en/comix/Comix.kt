@@ -67,7 +67,6 @@ class Comix : HttpSource() {
         }
         .build()
 
-    // Rely on Mihon's default User-Agent to sync perfectly with the WebView
     override fun headersBuilder(): Headers.Builder = super.headersBuilder()
         .add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
         .add("Accept-Language", "en-US,en;q=0.9")
@@ -186,15 +185,36 @@ class Comix : HttpSource() {
 
     private fun parseTerms(obj: JSONObject, vararg keys: String): String? {
         for (key in keys) {
-            val arr = obj.optJSONArray(key) ?: continue
-            val list = mutableListOf<String>()
-            for (i in 0 until arr.length()) {
-                val item = arr.optJSONObject(i)
-                if (item != null && item.has("title")) {
-                    list.add(item.optString("title"))
+            val value = obj.opt(key) ?: continue
+            
+            // Cleanly parse JSON arrays to extract the names
+            if (value is JSONArray) {
+                val list = mutableListOf<String>()
+                for (i in 0 until value.length()) {
+                    val item = value.optJSONObject(i)
+                    if (item != null) {
+                        val name = item.optString("title").ifBlank { item.optString("name") }.trim()
+                        if (name.isNotEmpty() && name != "null") list.add(name)
+                    }
                 }
+                if (list.isNotEmpty()) return list.joinToString(", ")
+            } else if (value is String) {
+                // In case the API returns a stringified JSON array
+                try {
+                    val arr = JSONArray(value)
+                    val list = mutableListOf<String>()
+                    for (i in 0 until arr.length()) {
+                        val item = arr.optJSONObject(i)
+                        if (item != null) {
+                            val name = item.optString("title").ifBlank { item.optString("name") }.trim()
+                            if (name.isNotEmpty() && name != "null") list.add(name)
+                        }
+                    }
+                    if (list.isNotEmpty()) return list.joinToString(", ")
+                } catch (e: Exception) {}
+                
+                if (value.isNotBlank() && value != "null" && !value.startsWith("[")) return value.trim()
             }
-            if (list.isNotEmpty()) return list.joinToString(", ")
         }
         return null
     }
@@ -230,11 +250,11 @@ class Comix : HttpSource() {
     // ---- Chapters ---------------------------------------------------------
 
     private fun isChapterObj(obj: JSONObject): Boolean {
-        // Core identifiers of a chapter vs other data structures
+        // A chapter MUST have an ID and a Number
         val hasId = obj.has("id") || obj.has("hid")
         val hasNum = obj.has("number") || obj.has("chap") || obj.has("chapter")
-        // Rule out manga/tag objects
-        val isNotManga = !obj.has("synopsis") && !obj.has("poster") && !obj.has("status") && !obj.has("slug")
+        // It must NOT be a manga, genre, or tag
+        val isNotManga = !obj.has("synopsis") && !obj.has("poster") && !obj.has("contentRating") && !obj.has("slug")
         
         return hasId && hasNum && isNotManga
     }
@@ -245,15 +265,51 @@ class Comix : HttpSource() {
         fun search(element: Any?) {
             when (element) {
                 is JSONObject -> {
+                    // Check if the current object IS a chapter
                     if (isChapterObj(element)) {
                         combined.put(element)
                     } else {
-                        element.keys().forEach { k -> search(element.opt(k)) }
+                        // Check if it's a pagination wrapper containing arrays
+                        if (element.has("pages")) {
+                            val pages = element.optJSONArray("pages")
+                            if (pages != null) {
+                                for (i in 0 until pages.length()) {
+                                    search(pages.opt(i))
+                                }
+                            }
+                        }
+                        
+                        // Otherwise, check typical array fields
+                        listOf("items", "data", "chapters", "list", "result").forEach { key ->
+                            val arr = element.optJSONArray(key)
+                            if (arr != null && arr.length() > 0) {
+                                val first = arr.optJSONObject(0)
+                                if (first != null && isChapterObj(first)) {
+                                    for (i in 0 until arr.length()) combined.put(arr.getJSONObject(i))
+                                } else {
+                                    search(arr)
+                                }
+                            }
+                        }
+
+                        // Recursively search all other keys just in case
+                        element.keys().forEach { k -> 
+                            if (k != "items" && k != "data" && k != "chapters" && k != "list" && k != "result" && k != "pages") {
+                                search(element.opt(k)) 
+                            }
+                        }
                     }
                 }
                 is JSONArray -> {
-                    for (i in 0 until element.length()) {
-                        search(element.opt(i))
+                    if (element.length() > 0) {
+                        val first = element.optJSONObject(0)
+                        if (first != null && isChapterObj(first)) {
+                            for (i in 0 until element.length()) combined.put(element.getJSONObject(i))
+                        } else {
+                            for (i in 0 until element.length()) {
+                                search(element.opt(i))
+                            }
+                        }
                     }
                 }
             }
@@ -289,6 +345,7 @@ class Comix : HttpSource() {
         val q = queries(document)
         val mangaUrl = response.request.url.encodedPath 
         
+        // Unleash the recursive chapter hunter
         val chaptersArray = extractAllChapters(q)
         val chapters = mutableListOf<SChapter>()
         val seenIds = mutableSetOf<String>()
@@ -297,7 +354,7 @@ class Comix : HttpSource() {
             val obj = chaptersArray.getJSONObject(i)
             val id = obj.optString("id").ifBlank { obj.optString("hid") }
             
-            // Prevent duplicates if infiniteQuery paginated arrays overlap
+            // Prevent duplicates
             if (id.isBlank() || id == "null" || !seenIds.add(id)) continue
             
             val number = obj.optDouble("number", -1.0)
@@ -337,6 +394,7 @@ class Comix : HttpSource() {
             })
         }
         
+        // Backup DOM Scraper
         if (chapters.isEmpty()) {
             val domChapters = document.select("a[href*=-chapter-], a.mchap-row__primary")
             chapters.addAll(domChapters.map { el ->
