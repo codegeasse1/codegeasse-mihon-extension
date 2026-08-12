@@ -14,7 +14,7 @@ android {
 }
 
 dependencies {
-    compileOnly("com.github.mihonapp:tachiyomix:1.4") // Match your extension's libVersion
+    compileOnly("com.github.mihonapp:tachiyomix:1.6.0")
     
     // The tools your custom file needs to function
     api("io.reactivex:rxjava:1.3.8")
