@@ -235,51 +235,80 @@ class TheBlank : HttpSource() {
             appDiv = runInWebView(reqUrl)
         }
 
-        val urls = extractChapterPages(appDiv!!)
+        val root = json.parseToJsonElement(appDiv!!).jsonObject
+        val props = root.getObject("props") ?: root
+
+        val imageUrls = mutableListOf<String>()
+
+        // Strategy 1: Standard Inertia arrays (props.chapter.images)
+        val chapterObj = props.getObject("chapter") ?: props.getObject("data")
+        val imagesArray = chapterObj?.getArray("images") ?: props.getArray("images") ?: chapterObj?.getArray("pages") ?: props.getArray("pages")
         
-        urls.mapIndexed { index, imgUrl ->
+        if (imagesArray != null) {
+            for (element in imagesArray) {
+                if (element is kotlinx.serialization.json.JsonPrimitive) {
+                    element.contentOrNull?.let { imageUrls.add(it) }
+                } else if (element is JsonObject) {
+                    val url = element.getString("url") ?: element.getString("image") ?: element.getString("src") ?: element.getString("link") ?: element.getString("path")
+                    if (url != null) imageUrls.add(url)
+                }
+            }
+        }
+
+        // Strategy 2: Comix-style objects (props.chapter.pages.items)
+        if (imageUrls.isEmpty()) {
+            val pagesObj = chapterObj?.getObject("pages") ?: props.getObject("pages")
+            val itemsArr = pagesObj?.getArray("items")
+            if (itemsArr != null) {
+                val baseImgUrl = pagesObj.getString("baseUrl")?.trimEnd('/') ?: ""
+                for (item in itemsArr) {
+                    if (item is JsonObject) {
+                        val urlPart = item.getString("url")?.trimStart('/')
+                        if (urlPart != null) {
+                            val fullUrl = if (urlPart.startsWith("http")) urlPart else if (baseImgUrl.isNotBlank()) "$baseImgUrl/$urlPart" else urlPart
+                            imageUrls.add(fullUrl)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Strategy 3: Deep String Extraction (Hunts for Cryptographic Tokens)
+        if (imageUrls.isEmpty()) {
+            val allStrings = mutableListOf<String>()
+            fun extractStrings(element: JsonElement) {
+                when (element) {
+                    is kotlinx.serialization.json.JsonPrimitive -> element.contentOrNull?.let { allStrings.add(it) }
+                    is JsonArray -> element.forEach { extractStrings(it) }
+                    is JsonObject -> element.forEach { (_, v) -> extractStrings(v) }
+                }
+            }
+            extractStrings(root)
+            
+            // Look specifically for strings containing BOTH 'token=' and 'sig=' or standard image extensions
+            val foundUrls = allStrings.filter { str ->
+                (str.contains("token=") && str.contains("sig=")) || 
+                (str.matches(".*\\.(jpg|jpeg|png|webp)(\\?.*)?".toRegex(RegexOption.IGNORE_CASE)) && (str.startsWith("http") || str.startsWith("/")))
+            }.distinct()
+
+            // If it's a tokenized site, the URLs usually follow /page/1, /page/2, etc. This ensures they stay in order.
+            val pageNumberRegex = """/page/(\d+)""".toRegex()
+            val sortedUrls = foundUrls.sortedBy { url ->
+                pageNumberRegex.find(url)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            }
+            
+            imageUrls.addAll(sortedUrls)
+        }
+
+        // Failsafe error message
+        if (imageUrls.isEmpty()) {
+            throw Exception("No pages found in JSON payload. Size: ${appDiv.length}")
+        }
+
+        imageUrls.mapIndexed { index, imgUrl ->
             val fullUrl = if (imgUrl.startsWith("http")) imgUrl else "$baseUrl$imgUrl"
             Page(index, imageUrl = fullUrl)
         }
-    }
-    
-    private fun extractChapterPages(appDiv: String): List<String> {
-        val root = json.parseToJsonElement(appDiv).jsonObject
-        val props = root.getObject("props") ?: root
-        
-        // Deep String Extraction: Scans the entire JSON for protected image URLs
-        val allStrings = mutableListOf<String>()
-        fun extractStrings(element: JsonElement) {
-            when (element) {
-                is kotlinx.serialization.json.JsonPrimitive -> element.contentOrNull?.let { allStrings.add(it) }
-                is JsonArray -> element.forEach { extractStrings(it) }
-                is JsonObject -> element.forEach { (_, v) -> extractStrings(v) }
-            }
-        }
-        extractStrings(root)
-        
-        // Filter for protected tokens (e.g., /page/1?token=...)
-        val protectedPages = allStrings.filter { it.contains("/page/") && it.contains("token=") }.distinct()
-        
-        if (protectedPages.isNotEmpty()) {
-            val pageNumberRegex = """/page/(\d+)""".toRegex()
-            return protectedPages.sortedBy { url ->
-                pageNumberRegex.find(url)?.groupValues?.get(1)?.toIntOrNull() ?: 0
-            }
-        }
-        
-        // Fallback for unprotected chapters
-        val staticPages = allStrings.filter { 
-            (it.contains("/chapters/") || it.contains("/pages/")) && 
-            it.matches(".*\\.(jpg|jpeg|png|webp).*".toRegex(RegexOption.IGNORE_CASE)) 
-        }.distinct()
-        
-        if (staticPages.isNotEmpty()) {
-            return staticPages
-        }
-        
-        val chapterObj = props.getObject("chapter") ?: props.getObject("data")
-        throw Exception("No pages found. Ensure you have solved the Cloudflare check.")
     }
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
