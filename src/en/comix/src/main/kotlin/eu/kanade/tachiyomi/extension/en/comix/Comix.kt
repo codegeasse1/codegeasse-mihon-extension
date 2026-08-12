@@ -61,20 +61,22 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
-abstract class Comix :
+class Comix :
     HttpSource(),
     ConfigurableSource {
+
+    override val name = "Comix"
+    override val baseUrl = "https://comix.to"
+    override val lang = "en"
 
     private val apiUrl get() = "$baseUrl/api/v1"
     override val supportsLatest = true
     
-    // Removed the 'override' keyword since these are not part of the standard HttpSource
     val supportsRelatedMangas = false
     val disableRelatedMangasBySearch = true
 
     private val preferences: SharedPreferences by getPreferencesLazy()
     
-    // Local JSON decoder to avoid cross-module inline resolution errors
     private val json = Json { 
         ignoreUnknownKeys = true 
         isLenient = true 
@@ -158,7 +160,6 @@ abstract class Comix :
     )
 
     private fun fetchMangaListFromBrowse(request: Request): Observable<MangasPage> = Observable.fromCallable {
-        // Removed runBlocking and awaitSuccess(), using native synchronous OkHttp
         val document = client.newCall(request).execute().asJsoup()
         
         val contentRating = request.url.queryParameter("content_rating")
@@ -301,7 +302,6 @@ abstract class Comix :
         }.getOrNull() ?: return null
 
         return queries.values.firstNotNullOfOrNull { value ->
-            // Fixed receiver error by applying .toString() before parsing the JsonElement
             runCatching { value.toString().parseAs<SearchResponse>() }
                 .getOrNull()
                 ?.takeIf { it.result.items.isNotEmpty() }
@@ -455,7 +455,6 @@ abstract class Comix :
 
         return runCatching {
             client.newCall(GET(url, headers)).execute().use { response ->
-                // Fixed receiver error by extracting the string body before parsing
                 response.body?.string()?.parseAs<TagSearchResponse>()?.result?.map { it.id.toString() } ?: emptyList()
             }
         }.getOrDefault(emptyList())
@@ -470,7 +469,6 @@ abstract class Comix :
     override fun mangaDetailsParse(response: Response) = throw UnsupportedOperationException()
 
     override fun fetchMangaDetails(manga: SManga): Observable<SManga> = Observable.fromCallable {
-        // Removed runBlocking
         val document = client.newCall(GET(getMangaUrl(manga), headers)).execute().asJsoup()
 
         val initialData = document.selectFirst("script#initial-data")?.data()
@@ -482,7 +480,6 @@ abstract class Comix :
             ?.value
             ?: throw Exception("Could not find manga detail in queries")
 
-        // Fixed receiver error by applying .toString()
         detail.toString().parseAs<Manga>().toSManga(
             preferences.posterQuality(),
             preferences.alternativeNamesInDescription(),
@@ -502,7 +499,6 @@ abstract class Comix :
         val blacklist = preferences.scanlatorBlacklist()
         val mangaSlug = manga.url.removePrefix("/")
 
-        // Removed runBlocking
         val document = client.newCall(GET(getMangaUrl(manga), headers)).execute().asJsoup()
         
         val payload = runInWebView(
@@ -670,7 +666,6 @@ abstract class Comix :
     override fun fetchPageList(chapter: SChapter): Observable<List<Page>> = Observable.fromCallable {
         val request = GET(getChapterUrl(chapter), headers)
         
-        // Removed runBlocking
         val document = client.newCall(request).execute().asJsoup()
         
         val payload = runInWebView(
