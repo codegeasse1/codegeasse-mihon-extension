@@ -1,32 +1,26 @@
 rootProject.name = "mihon-extension-template"
 
-// 1. Manually include your custom library first
 include(":lib:codegeasse-utils")
 
-// Auto-register every extension module.
-// Convention: src/<lang>/<extension-name>
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+    }
+}
 
+// Auto-register extension modules...
 val srcDir = file("src")
-
 if (srcDir.exists()) {
-    srcDir
-        .listFiles()
-        ?.filter { it.isDirectory }
-        ?.sortedBy { it.name }
-        ?.forEach { langDir ->
-            langDir
-                .listFiles()
-                ?.filter { it.isDirectory }
-                ?.sortedBy { it.name }
-                ?.forEach { extDir ->
-                    val buildGradleKts = file("${extDir.path}/build.gradle.kts")
-                    val buildGradle = file("${extDir.path}/build.gradle")
-
-                    if (buildGradleKts.exists() || buildGradle.exists()) {
-                        val modulePath = ":src:${langDir.name}:${extDir.name}"
-                        include(modulePath)
-                        project(modulePath).projectDir = extDir
-                    }
-                }
+    srcDir.listFiles()?.filter { it.isDirectory }?.forEach { langDir ->
+        langDir.listFiles()?.filter { it.isDirectory }?.forEach { extDir ->
+            if (file("${extDir.path}/build.gradle.kts").exists() || file("${extDir.path}/build.gradle").exists()) {
+                val modulePath = ":src:${langDir.name}:${extDir.name}"
+                include(modulePath)
+                project(modulePath).projectDir = extDir
+            }
         }
+    }
 }
