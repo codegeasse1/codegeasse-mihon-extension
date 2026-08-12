@@ -2,15 +2,6 @@ rootProject.name = "mihon-extension-template"
 
 include(":lib:codegeasse-utils")
 
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories {
-        google()
-        mavenCentral()
-        maven { url = uri("https://jitpack.io") }
-    }
-}
-
 // Auto-register extension modules...
 val srcDir = file("src")
 if (srcDir.exists()) {
