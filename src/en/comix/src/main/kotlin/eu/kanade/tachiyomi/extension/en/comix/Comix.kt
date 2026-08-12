@@ -559,7 +559,6 @@ class Comix :
                                     let tries = 0;
                                     
                                     // SUPERFAST OPTIMIZATION: Reduced check interval from 100ms to 10ms.
-                                    // Bumps up checking speed so it fires instantly when the DOM changes.
                                     const interval = setInterval(() => {
                                         const button = findNextButton(page);
                                         if (button) {
@@ -1086,7 +1085,10 @@ class Comix :
         private const val DEFAULT_CONTENT_RATING = "suggestive"
         private const val WEBVIEW_START_TIMEOUT_SECONDS = 120L
         private const val WEBVIEW_TIMEOUT_SECONDS = 90L
-        private const val SCRAMBLE_PATH_FALLBACK_REGEX = Regex("/(?:i5|s?i+)/")
+        private const val SCRIPT_RETRY_INTERVAL_MS = 100L
+        private const val WEBVIEW_WIDTH = 1080
+        private const val WEBVIEW_HEIGHT = 1920
+        private val SCRAMBLE_PATH_FALLBACK_REGEX = Regex("/(?:i5|s?i+)/")
     }
 }
 
