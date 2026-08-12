@@ -25,6 +25,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.nodes.Document
 import okio.Buffer
+import java.util.Calendar
 
 /**
  * Comix (comix.to)
@@ -66,7 +67,6 @@ class Comix : HttpSource() {
         }
         .build()
 
-    // Rely on Mihon's default User-Agent to sync perfectly with the WebView
     override fun headersBuilder(): Headers.Builder = super.headersBuilder()
         .add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
         .add("Accept-Language", "en-US,en;q=0.9")
@@ -93,17 +93,16 @@ class Comix : HttpSource() {
     private fun extractItems(value: Any?): JSONArray? {
         if (value is JSONArray) return value
         if (value is JSONObject) {
-            if (value.has("pages")) {
-                val pagesArr = value.optJSONArray("pages")
+            // Comix wraps paginated items inside a "result" object. We must unwrap it first!
+            val target = if (value.has("result")) value.optJSONObject("result") ?: value else value
+            
+            if (target.has("pages")) {
+                val pagesArr = target.optJSONArray("pages")
                 if (pagesArr != null && pagesArr.length() > 0) {
                     val combined = JSONArray()
                     for (i in 0 until pagesArr.length()) {
                         val pObj = pagesArr.get(i)
-                        val pItems = when (pObj) {
-                            is JSONArray -> pObj
-                            is JSONObject -> pObj.optJSONArray("items") ?: pObj.optJSONArray("data") ?: pObj.optJSONArray("chapters") ?: pObj.optJSONArray("list")
-                            else -> null
-                        }
+                        val pItems = extractItems(pObj)
                         if (pItems != null) {
                             for (j in 0 until pItems.length()) combined.put(pItems.get(j))
                         }
@@ -111,7 +110,7 @@ class Comix : HttpSource() {
                     if (combined.length() > 0) return combined
                 }
             }
-            return value.optJSONArray("items") ?: value.optJSONArray("data") ?: value.optJSONArray("chapters") ?: value.optJSONArray("list")
+            return target.optJSONArray("items") ?: target.optJSONArray("data") ?: target.optJSONArray("chapters") ?: target.optJSONArray("list")
         }
         return null
     }
@@ -220,30 +219,18 @@ class Comix : HttpSource() {
         if (arr.length() == 0) return false
         val first = arr.optJSONObject(0) ?: return false
         
-        // The definitive check for a Comix chapter object: it has an 'id' and a 'number'
-        return first.has("id") && first.has("number") && !first.has("synopsis")
+        if (first.has("synopsis") || first.has("latestChapter") || first.has("avatar") || first.has("email")) return false
+        if (first.has("slug")) return false 
+        if (!first.has("id") && !first.has("hid")) return false
+        
+        return true
     }
 
     private fun findChaptersArrayRecursively(obj: Any?): JSONArray? {
         if (obj is JSONObject) {
-            if (obj.has("pages")) {
-                val pagesArr = obj.optJSONArray("pages")
-                if (pagesArr != null && pagesArr.length() > 0) {
-                    val combined = JSONArray()
-                    for (i in 0 until pagesArr.length()) {
-                        val pageObj = pagesArr.get(i)
-                        val items = extractItems(pageObj)
-                        if (items != null) {
-                            for (j in 0 until items.length()) combined.put(items.get(j))
-                        }
-                    }
-                    if (combined.length() > 0 && isChapterArray(combined)) return combined
-                }
-            }
-
-            listOf("items", "data", "chapters", "list").forEach { key ->
-                val arr = obj.optJSONArray(key)
-                if (arr != null && arr.length() > 0 && isChapterArray(arr)) return arr
+            val items = extractItems(obj)
+            if (items != null && items.length() > 0 && isChapterArray(items)) {
+                return items
             }
 
             for (key in obj.keys()) {
@@ -259,6 +246,27 @@ class Comix : HttpSource() {
             }
         }
         return null
+    }
+
+    private fun parseRelativeDate(dateStr: String): Long {
+        if (dateStr.isEmpty() || dateStr == "null") return 0L
+        val trimmed = dateStr.trim().lowercase().removeSuffix(" ago")
+        val match = Regex("""^(\d+)\s*(s|m|h|d|w|mo|mos|y|yr|yrs|min|mins|sec|secs|hr|hrs|day|days|week|weeks|month|months|year|years)$""").find(trimmed) ?: return 0L
+
+        val amount = match.groupValues[1].toIntOrNull() ?: return 0L
+        val unit = match.groupValues[2]
+
+        val calendar = Calendar.getInstance()
+        when (unit) {
+            "s", "sec", "secs" -> calendar.add(Calendar.SECOND, -amount)
+            "m", "min", "mins" -> calendar.add(Calendar.MINUTE, -amount)
+            "h", "hr", "hrs" -> calendar.add(Calendar.HOUR_OF_DAY, -amount)
+            "d", "day", "days" -> calendar.add(Calendar.DAY_OF_YEAR, -amount)
+            "w", "week", "weeks" -> calendar.add(Calendar.WEEK_OF_YEAR, -amount)
+            "mo", "mos", "month", "months" -> calendar.add(Calendar.MONTH, -amount)
+            "y", "yr", "yrs", "year", "years" -> calendar.add(Calendar.YEAR, -amount)
+        }
+        return calendar.timeInMillis
     }
 
     override fun chapterListParse(response: Response): List<SChapter> {
@@ -292,13 +300,14 @@ class Comix : HttpSource() {
                 val nameStr = obj.optString("name", "").trim()
                 val id = obj.optString("id", "")
                 val urlStr = obj.optString("url", "")
+                val dateStr = obj.optString("createdAtFormatted", "")
                 
                 chapters.add(SChapter.create().apply {
-                    val numString = if (number % 1.0 == 0.0) number.toInt().toString() else number.toString()
+                    val numString = if (number >= 0 && number % 1.0 == 0.0) number.toInt().toString() else if (number >= 0) number.toString() else ""
                     
                     name = buildString {
                         append("Chapter ")
-                        append(numString)
+                        if (numString.isNotBlank()) append(numString) else append("?")
                         if (nameStr.isNotEmpty() && nameStr != "null") {
                             append(": ")
                             append(nameStr)
@@ -306,11 +315,15 @@ class Comix : HttpSource() {
                     }
                     
                     chapter_number = number.toFloat()
+                    date_upload = parseRelativeDate(dateStr)
                     
                     url = if (urlStr.isNotBlank() && urlStr != "null") {
                         urlStr
+                    } else if (id.isNotBlank() && id != "null") {
+                        val safeChapNum = if (numString.isNotBlank()) numString else "0"
+                        "$mangaUrl/$id-chapter-$safeChapNum"
                     } else {
-                        "$mangaUrl/$id-chapter-$numString"
+                        mangaUrl
                     }
                 })
             }
@@ -377,7 +390,7 @@ class Comix : HttpSource() {
 
         val pagesInfo = mutableListOf<PageInfo>()
 
-        // 1. Process the API JSON Response exactly how Comix returns it
+        // 1. Process the API JSON Response
         if (contentType.contains("json", ignoreCase = true) || bodyStr.trim().startsWith("{")) {
             val root = try { JSONObject(bodyStr) } catch(e: Exception) { JSONObject() }
             val pagesObj = root.optJSONObject("result")?.optJSONObject("pages")
@@ -395,7 +408,6 @@ class Comix : HttpSource() {
                     }
                 }
             } else {
-                // Deep scan if the standard API layout changes
                 pagesInfo.addAll(findImageUrlsRecursively(root))
             }
         }
