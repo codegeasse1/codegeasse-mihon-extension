@@ -557,16 +557,19 @@ class Comix :
                                     state.nextClicks.add(page);
                                     window.$interfaceName.resetTimer();
                                     let tries = 0;
+                                    
+                                    // SUPERFAST OPTIMIZATION: Reduced check interval from 100ms to 10ms.
+                                    // Bumps up checking speed so it fires instantly when the DOM changes.
                                     const interval = setInterval(() => {
                                         const button = findNextButton(page);
                                         if (button) {
                                             button.click();
                                             clearInterval(interval);
-                                        } else if (++tries > 50) {
+                                        } else if (++tries > 500) {
                                             clearInterval(interval);
                                             submit();
                                         }
-                                    }, 100);
+                                    }, 10);
                                 } else {
                                     submit();
                                 }
@@ -779,7 +782,8 @@ class Comix :
                     databaseEnabled = true
                     loadWithOverviewMode = true
                     useWideViewPort = true
-                    blockNetworkImage = false
+                    // SUPERFAST OPTIMIZATION: Disables network image fetching entirely in the invisible browser
+                    blockNetworkImage = true 
                     userAgentString = headers["User-Agent"]
                 }
 
@@ -797,6 +801,15 @@ class Comix :
                     ): WebResourceResponse? {
                         val requestUrl = request.url?.toString()?.toHttpUrlOrNull()
                             ?: return super.shouldInterceptRequest(view, request)
+
+                        // SUPERFAST OPTIMIZATION: Instantly block heavy media and font assets so JS executes without waiting
+                        val path = requestUrl.encodedPath.lowercase()
+                        if (path.endsWith(".jpg") || path.endsWith(".jpeg") || path.endsWith(".png") ||
+                            path.endsWith(".webp") || path.endsWith(".gif") || path.endsWith(".woff2") ||
+                            path.endsWith(".woff") || path.endsWith(".ttf") || path.endsWith(".mp4")
+                        ) {
+                            return emptyResponse
+                        }
 
                         val baseUrlHost = baseUrl.toHttpUrl().host
                         val allowedHost = requestUrl.host.endsWith(baseUrlHost) ||
@@ -830,7 +843,8 @@ class Comix :
                         if (!active.get() || payloadResult.payload != null) return
                         runCatching { view.evaluateJavascript(script, null) }
                         if (active.get() && payloadResult.payload == null) {
-                            handler.postDelayed(this, SCRIPT_RETRY_INTERVAL_MS)
+                            // SUPERFAST OPTIMIZATION: Halved retry delay to inject the interceptor faster
+                            handler.postDelayed(this, 50L) 
                         }
                     }
                 }
@@ -1072,10 +1086,7 @@ class Comix :
         private const val DEFAULT_CONTENT_RATING = "suggestive"
         private const val WEBVIEW_START_TIMEOUT_SECONDS = 120L
         private const val WEBVIEW_TIMEOUT_SECONDS = 90L
-        private const val SCRIPT_RETRY_INTERVAL_MS = 100L
-        private const val WEBVIEW_WIDTH = 1080
-        private const val WEBVIEW_HEIGHT = 1920
-        private val SCRAMBLE_PATH_FALLBACK_REGEX = Regex("/(?:i5|s?i+)/")
+        private const val SCRAMBLE_PATH_FALLBACK_REGEX = Regex("/(?:i5|s?i+)/")
     }
 }
 
