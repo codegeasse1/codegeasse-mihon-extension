@@ -24,6 +24,6 @@ dependencies {
     
     // The tools your custom file needs to function
     api("io.reactivex:rxjava:1.3.8")
-    api("com.github.inorichi.injekt:injekt-core:65b0440")
+    api("uy.kohesive.injekt:injekt-core:1.16.1")
     api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
 }
