@@ -86,7 +86,7 @@ class TheBlank : HttpSource() {
     }
 
     // ============================== Popular ==============================
-    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/search?sort=views&page=$page", headers)
+    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/?page=$page", headers)
 
     override fun popularMangaParse(response: Response): MangasPage = throw UnsupportedOperationException()
 
@@ -94,7 +94,7 @@ class TheBlank : HttpSource() {
         val reqUrl = popularMangaRequest(page).url.toString()
         val props = getInertiaProps(reqUrl)
 
-        val trending = props.getObject("series")?.getArray("data") ?: props.getArray("data") ?: emptyList()
+        val trending = props.getArray("trendingSerie") ?: props.getObject("latestChapters")?.getArray("data") ?: emptyList()
 
         val mangas = trending.mapNotNull { it.jsonObject }.map { obj ->
             SManga.create().apply {
@@ -104,7 +104,7 @@ class TheBlank : HttpSource() {
             }
         }
         
-        val meta = props.getObject("series")?.getObject("meta")
+        val meta = props.getObject("latestChapters")?.getObject("meta")
         val currentPage = meta?.getInt("current_page") ?: 1
         val lastPage = meta?.getInt("last_page") ?: 1
 
@@ -112,7 +112,7 @@ class TheBlank : HttpSource() {
     }
 
     // ============================== Latest ===============================
-    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/search?sort=recently&page=$page", headers)
+    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/?page=$page", headers)
 
     override fun latestUpdatesParse(response: Response): MangasPage = throw UnsupportedOperationException()
 
@@ -120,7 +120,7 @@ class TheBlank : HttpSource() {
         val reqUrl = latestUpdatesRequest(page).url.toString()
         val props = getInertiaProps(reqUrl)
 
-        val latest = props.getObject("series")?.getArray("data") ?: props.getArray("data") ?: emptyList()
+        val latest = props.getObject("latestChapters")?.getArray("data") ?: emptyList()
 
         val mangas = latest.mapNotNull { it.jsonObject }.map { obj ->
             SManga.create().apply {
@@ -130,7 +130,7 @@ class TheBlank : HttpSource() {
             }
         }
         
-        val meta = props.getObject("series")?.getObject("meta")
+        val meta = props.getObject("latestChapters")?.getObject("meta")
         val currentPage = meta?.getInt("current_page") ?: 1
         val lastPage = meta?.getInt("last_page") ?: 1
 
@@ -276,17 +276,14 @@ class TheBlank : HttpSource() {
 
         val imageUrls = mutableListOf<String>()
 
-        // Pam Extraction: We recursively scan ONLY the chapter object so we don't accidentally grab site banners.
         fun extractStrings(element: JsonElement) {
             when (element) {
                 is kotlinx.serialization.json.JsonPrimitive -> {
                     val str = element.contentOrNull
                     if (str != null) {
-                        // The true Pam tokenized images
                         if (str.contains("/page/") && str.contains("token=") && str.contains("sig=")) {
                             imageUrls.add(str)
                         } 
-                        // Standard unprotected images
                         else if (str.matches(".*\\.(jpg|jpeg|png|webp)(\\?.*)?$".toRegex(RegexOption.IGNORE_CASE))) {
                             imageUrls.add(str)
                         }
@@ -301,14 +298,12 @@ class TheBlank : HttpSource() {
         
         var distinctUrls = imageUrls.distinct()
 
-        // Extremely aggressive filtering to ensure we drop navigational banners
         distinctUrls = distinctUrls.filterNot { it.contains("banners/", ignoreCase = true) }
 
         if (distinctUrls.isEmpty()) {
             throw Exception("No pages found in chapter data. Cloudflare might be blocking the payload.")
         }
 
-        // Pam CMS paginates the tokens numerically. This ensures reading order is always perfect.
         val sortedUrls = if (distinctUrls.any { it.contains("/page/") }) {
             val pageRegex = """/page/(\d+)""".toRegex(RegexOption.IGNORE_CASE)
             distinctUrls.sortedBy { url ->
