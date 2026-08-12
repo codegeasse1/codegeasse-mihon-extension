@@ -1,5 +1,8 @@
 rootProject.name = "mihon-extension-template"
 
+// 1. Manually include your custom library first
+include(":lib:codegeasse-utils")
+
 // Auto-register every extension module.
 // Convention: src/<lang>/<extension-name>
 
