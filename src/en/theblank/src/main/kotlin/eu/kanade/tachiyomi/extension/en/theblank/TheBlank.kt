@@ -98,7 +98,8 @@ class TheBlank : HttpSource() {
 
         val mangas = trending.mapNotNull { it.jsonObject }.map { obj ->
             SManga.create().apply {
-                this.url = obj.getString("link") ?: "/serie/${obj.getString("slug")}"
+                val rawUrl = obj.getString("link") ?: "/serie/${obj.getString("slug")}"
+                this.url = rawUrl.removePrefix(baseUrl) // Fixes the corrupted duplicate URL issue
                 this.title = obj.getString("title") ?: "Unknown"
                 this.thumbnail_url = obj.getString("image")?.let { if (it.startsWith("http")) it else "$baseUrl$it" }
             }
@@ -124,7 +125,8 @@ class TheBlank : HttpSource() {
 
         val mangas = latest.mapNotNull { it.jsonObject }.map { obj ->
             SManga.create().apply {
-                this.url = obj.getString("link") ?: "/serie/${obj.getString("slug")}"
+                val rawUrl = obj.getString("link") ?: "/serie/${obj.getString("slug")}"
+                this.url = rawUrl.removePrefix(baseUrl)
                 this.title = obj.getString("title") ?: "Unknown"
                 this.thumbnail_url = obj.getString("image")?.let { if (it.startsWith("http")) it else "$baseUrl$it" }
             }
@@ -187,7 +189,8 @@ class TheBlank : HttpSource() {
 
         val mangas = searchResults.mapNotNull { it.jsonObject }.map { obj ->
             SManga.create().apply {
-                this.url = obj.getString("link") ?: "/serie/${obj.getString("slug")}"
+                val rawUrl = obj.getString("link") ?: "/serie/${obj.getString("slug")}"
+                this.url = rawUrl.removePrefix(baseUrl)
                 this.title = obj.getString("title") ?: "Unknown"
                 this.thumbnail_url = obj.getString("image")?.let { if (it.startsWith("http")) it else "$baseUrl$it" }
             }
@@ -209,7 +212,7 @@ class TheBlank : HttpSource() {
         val reqUrl = baseUrl + manga.url
         val props = getInertiaProps(reqUrl)
         
-        val serie = props.getObject("serie") ?: props.getObject("data") ?: throw Exception("Serie data not found")
+        val serie = props.getObject("serie") ?: props.getObject("data") ?: return@fromCallable manga
         
         manga.apply {
             this.title = serie.getString("title") ?: title
@@ -234,17 +237,62 @@ class TheBlank : HttpSource() {
         val reqUrl = baseUrl + manga.url
         val props = getInertiaProps(reqUrl)
         
-        val serie = props.getObject("serie") ?: props.getObject("data") ?: throw Exception("Serie data not found")
-        val chaptersArr = serie.getArray("chapters") ?: emptyList()
+        val chaptersList = mutableListOf<SChapter>()
         
-        chaptersArr.mapNotNull { it.jsonObject }.map { obj ->
-            SChapter.create().apply {
-                this.url = manga.url + "/chapter/" + obj.getString("slug")
-                this.name = obj.getString("title") ?: "Chapter ${obj.getInt("chapterNumber") ?: ""}"
-                this.date_upload = parseDate(obj.getString("createdAt"))
-                this.chapter_number = obj.getInt("chapterNumber")?.toFloat() ?: -1f
+        // Strategy 1: Standard Pam CMS location
+        val serie = props.getObject("serie") ?: props.getObject("data")
+        val chaptersArray = serie?.getArray("chapters") ?: serie?.getObject("chapters")?.getArray("data") ?: props.getArray("chapters") ?: props.getObject("chapters")?.getArray("data")
+        
+        if (chaptersArray != null && chaptersArray.isNotEmpty()) {
+            chaptersArray.mapNotNull { it.jsonObject }.forEach { obj ->
+                val slug = obj.getString("slug") ?: return@forEach
+                val chapNum = obj.getString("chapterNumber") ?: obj.getString("chapter_number")
+                val title = obj.getString("title") ?: obj.getString("name") ?: "Chapter $chapNum"
+                val dateStr = obj.getString("createdAt") ?: obj.getString("created_at") ?: obj.getString("published_at")
+                
+                chaptersList.add(SChapter.create().apply {
+                    this.url = "/serie/${manga.url.substringAfterLast("/serie/").substringBefore("/")}/chapter/$slug"
+                    this.name = title
+                    this.date_upload = parseDate(dateStr)
+                    this.chapter_number = chapNum?.toFloatOrNull() ?: -1f
+                })
             }
-        }.sortedByDescending { it.chapter_number }
+        }
+        
+        // Strategy 2: Deep Pam Scanner Fallback (if they hid the array)
+        if (chaptersList.isEmpty()) {
+            fun findChapters(element: JsonElement) {
+                if (element is JsonArray) {
+                    val first = element.firstOrNull()?.jsonObject
+                    if (first != null && first.containsKey("slug") && (first.containsKey("chapterNumber") || first.containsKey("chapter_number"))) {
+                        element.mapNotNull { it.jsonObject }.forEach { obj ->
+                            val slug = obj.getString("slug") ?: return@forEach
+                            val chapNum = obj.getString("chapterNumber") ?: obj.getString("chapter_number")
+                            val title = obj.getString("title") ?: obj.getString("name") ?: "Chapter $chapNum"
+                            val dateStr = obj.getString("createdAt") ?: obj.getString("created_at")
+                            
+                            chaptersList.add(SChapter.create().apply {
+                                this.url = "/serie/${manga.url.substringAfterLast("/serie/").substringBefore("/")}/chapter/$slug"
+                                this.name = title
+                                this.date_upload = parseDate(dateStr)
+                                this.chapter_number = chapNum?.toFloatOrNull() ?: -1f
+                            })
+                        }
+                    } else {
+                        element.forEach { findChapters(it) }
+                    }
+                } else if (element is JsonObject) {
+                    element.forEach { (_, v) -> findChapters(v) }
+                }
+            }
+            findChapters(props)
+        }
+        
+        if (chaptersList.isEmpty()) {
+            throw Exception("No chapters found in JSON. The page might be empty or Cloudflare blocked it.")
+        }
+        
+        return@fromCallable chaptersList.distinctBy { it.url }.sortedByDescending { it.chapter_number }
     }
 
     private fun parseDate(dateStr: String?): Long {
