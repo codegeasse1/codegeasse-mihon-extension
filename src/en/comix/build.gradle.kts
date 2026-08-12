@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
+    kotlin("plugin.serialization") version "1.9.0"
 }
 
 // --- Extension metadata -----------------------------------------------
@@ -64,4 +65,5 @@ dependencies {
     compileOnly("org.jsoup:jsoup:1.17.2")
     compileOnly("com.google.code.gson:gson:2.10.1")
     implementation(kotlin("stdlib"))
+    implementation(project(":lib:codegeasse-utils"))
 }
