@@ -66,6 +66,7 @@ class Comix : HttpSource() {
         }
         .build()
 
+    // Rely on Mihon's default User-Agent to sync perfectly with the WebView
     override fun headersBuilder(): Headers.Builder = super.headersBuilder()
         .add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
         .add("Accept-Language", "en-US,en;q=0.9")
@@ -219,11 +220,8 @@ class Comix : HttpSource() {
         if (arr.length() == 0) return false
         val first = arr.optJSONObject(0) ?: return false
         
-        if (first.has("synopsis") || first.has("latestChapter") || first.has("avatar") || first.has("email")) return false
-        if (first.has("slug")) return false 
-        if (!first.has("id") && !first.has("hid")) return false
-        
-        return true
+        // The definitive check for a Comix chapter object: it has an 'id' and a 'number'
+        return first.has("id") && first.has("number") && !first.has("synopsis")
     }
 
     private fun findChaptersArrayRecursively(obj: Any?): JSONArray? {
@@ -289,36 +287,30 @@ class Comix : HttpSource() {
         if (chaptersArray != null) {
             for (i in 0 until chaptersArray.length()) {
                 val obj = chaptersArray.getJSONObject(i)
+                
+                val number = obj.optDouble("number", -1.0)
+                val nameStr = obj.optString("name", "").trim()
+                val id = obj.optString("id", "")
+                val urlStr = obj.optString("url", "")
+                
                 chapters.add(SChapter.create().apply {
-                    val chapNum = obj.optString("chap").ifBlank { obj.optString("chapter") }
-                    val volNum = obj.optString("vol").ifBlank { obj.optString("volume") }
-                    val titleStr = obj.optString("title").ifBlank { obj.optString("name") }.trim()
+                    val numString = if (number % 1.0 == 0.0) number.toInt().toString() else number.toString()
                     
-                    var nameStr = ""
-                    if (volNum.isNotBlank() && volNum != "null" && volNum != "0") nameStr += "Vol. $volNum "
-                    if (chapNum.isNotBlank() && chapNum != "null") nameStr += "Ch. $chapNum "
-                    if (titleStr.isNotBlank() && titleStr != "null") {
-                        nameStr += if (nameStr.isEmpty()) titleStr else " - $titleStr"
+                    name = buildString {
+                        append("Chapter ")
+                        append(numString)
+                        if (nameStr.isNotEmpty() && nameStr != "null") {
+                            append(": ")
+                            append(nameStr)
+                        }
                     }
                     
-                    name = nameStr.trim().ifEmpty { 
-                        if (chapNum.isNotBlank() && chapNum != "null") "Chapter $chapNum" else "Oneshot" 
-                    }
+                    chapter_number = number.toFloat()
                     
-                    chapter_number = chapNum.toFloatOrNull() ?: -1f
-                    
-                    val id = obj.optString("id")
-                    val hid = obj.optString("hid")
-                    val safeChapNum = if (chapNum.isNotBlank() && chapNum != "null") chapNum else "0"
-                    
-                    url = if (id.isNotBlank() && id != "null" && id.matches(Regex("""^\d+$"""))) {
-                        "$mangaUrl/$id-chapter-$safeChapNum"
-                    } else if (hid.isNotBlank() && hid != "null") {
-                        "$mangaUrl/$hid-chapter-$safeChapNum"
-                    } else if (obj.has("url") && obj.getString("url").isNotBlank()) {
-                        obj.getString("url")
+                    url = if (urlStr.isNotBlank() && urlStr != "null") {
+                        urlStr
                     } else {
-                        mangaUrl
+                        "$mangaUrl/$id-chapter-$numString"
                     }
                 })
             }
@@ -385,10 +377,27 @@ class Comix : HttpSource() {
 
         val pagesInfo = mutableListOf<PageInfo>()
 
-        // 1. Process the API JSON Response
+        // 1. Process the API JSON Response exactly how Comix returns it
         if (contentType.contains("json", ignoreCase = true) || bodyStr.trim().startsWith("{")) {
             val root = try { JSONObject(bodyStr) } catch(e: Exception) { JSONObject() }
-            pagesInfo.addAll(findImageUrlsRecursively(root))
+            val pagesObj = root.optJSONObject("result")?.optJSONObject("pages")
+            
+            if (pagesObj != null) {
+                val baseUrlStr = pagesObj.optString("baseUrl").trimEnd('/')
+                val items = pagesObj.optJSONArray("items")
+                if (items != null) {
+                    for (i in 0 until items.length()) {
+                        val img = items.optJSONObject(i) ?: continue
+                        val path = img.optString("url").trimStart('/')
+                        val s = img.optInt("s", 0)
+                        val fullUrl = if (path.startsWith("http")) path else "$baseUrlStr/$path"
+                        pagesInfo.add(PageInfo(fullUrl, s))
+                    }
+                }
+            } else {
+                // Deep scan if the standard API layout changes
+                pagesInfo.addAll(findImageUrlsRecursively(root))
+            }
         }
 
         // 2. Fallback to HTML parsing
