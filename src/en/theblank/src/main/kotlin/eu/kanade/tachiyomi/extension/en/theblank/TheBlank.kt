@@ -236,73 +236,58 @@ class TheBlank : HttpSource() {
         }
 
         val root = json.parseToJsonElement(appDiv!!).jsonObject
-        val props = root.getObject("props") ?: root
-
-        val imageUrls = mutableListOf<String>()
-
-        // Strategy 1: Standard Inertia arrays (props.chapter.images)
-        val chapterObj = props.getObject("chapter") ?: props.getObject("data")
-        val imagesArray = chapterObj?.getArray("images") ?: props.getArray("images") ?: chapterObj?.getArray("pages") ?: props.getArray("pages")
         
-        if (imagesArray != null) {
-            for (element in imagesArray) {
-                if (element is kotlinx.serialization.json.JsonPrimitive) {
-                    element.contentOrNull?.let { imageUrls.add(it) }
-                } else if (element is JsonObject) {
-                    val url = element.getString("url") ?: element.getString("image") ?: element.getString("src") ?: element.getString("link") ?: element.getString("path")
-                    if (url != null) imageUrls.add(url)
-                }
-            }
-        }
+        // Deep Array Traversal: Finds the largest array of URLs in the entire JSON payload
+        var largestArray: List<String> = emptyList()
 
-        // Strategy 2: Comix-style objects (props.chapter.pages.items)
-        if (imageUrls.isEmpty()) {
-            val pagesObj = chapterObj?.getObject("pages") ?: props.getObject("pages")
-            val itemsArr = pagesObj?.getArray("items")
-            if (itemsArr != null) {
-                val baseImgUrl = pagesObj.getString("baseUrl")?.trimEnd('/') ?: ""
-                for (item in itemsArr) {
-                    if (item is JsonObject) {
-                        val urlPart = item.getString("url")?.trimStart('/')
-                        if (urlPart != null) {
-                            val fullUrl = if (urlPart.startsWith("http")) urlPart else if (baseImgUrl.isNotBlank()) "$baseImgUrl/$urlPart" else urlPart
-                            imageUrls.add(fullUrl)
+        fun traverse(element: JsonElement) {
+            if (element is JsonArray) {
+                val urls = mutableListOf<String>()
+                for (item in element) {
+                    if (item is kotlinx.serialization.json.JsonPrimitive) {
+                        val str = item.contentOrNull
+                        if (str != null && str.contains("/") && (str.contains("token=") || str.contains("sig=") || str.matches(".*\\.(jpg|jpeg|png|webp)(\\?.*)?$".toRegex(RegexOption.IGNORE_CASE)))) {
+                            urls.add(str)
                         }
+                    } else if (item is JsonObject) {
+                        val str = item.values.mapNotNull { it.jsonPrimitive?.contentOrNull }.firstOrNull { s ->
+                            s.contains("/") && (s.contains("token=") || s.contains("sig=") || s.matches(".*\\.(jpg|jpeg|png|webp)(\\?.*)?$".toRegex(RegexOption.IGNORE_CASE)))
+                        }
+                        if (str != null) urls.add(str)
                     }
                 }
+                if (urls.size > largestArray.size) {
+                    largestArray = urls
+                }
+                element.forEach { traverse(it) }
+            } else if (element is JsonObject) {
+                element.forEach { (_, v) -> traverse(v) }
             }
         }
 
-        // Strategy 3: Deep String Extraction (Hunts for Cryptographic Tokens)
-        if (imageUrls.isEmpty()) {
-            val allStrings = mutableListOf<String>()
-            fun extractStrings(element: JsonElement) {
-                when (element) {
-                    is kotlinx.serialization.json.JsonPrimitive -> element.contentOrNull?.let { allStrings.add(it) }
-                    is JsonArray -> element.forEach { extractStrings(it) }
-                    is JsonObject -> element.forEach { (_, v) -> extractStrings(v) }
-                }
-            }
-            extractStrings(root)
-            
-            // Look specifically for strings containing BOTH 'token=' and 'sig=' or standard image extensions
-            val foundUrls = allStrings.filter { str ->
-                (str.contains("token=") && str.contains("sig=")) || 
-                (str.matches(".*\\.(jpg|jpeg|png|webp)(\\?.*)?".toRegex(RegexOption.IGNORE_CASE)) && (str.startsWith("http") || str.startsWith("/")))
-            }.distinct()
+        traverse(root)
+        
+        // Filter out advertisement banners to keep the list clean
+        var imageUrls = largestArray.filterNot { it.contains("banners/", ignoreCase = true) }.distinct()
 
-            // If it's a tokenized site, the URLs usually follow /page/1, /page/2, etc. This ensures they stay in order.
-            val pageNumberRegex = """/page/(\d+)""".toRegex()
-            val sortedUrls = foundUrls.sortedBy { url ->
+        // Fallback: If traversal fails, scan the raw JSON string globally
+        if (imageUrls.isEmpty()) {
+            val regex = """(https?://[^"'\\]+|/[^"'\\]+)(?:\.(?:jpg|jpeg|png|webp)(?:\?[^"'\\]+)?|/page/\d+\?[^"'\\]+)""".toRegex(RegexOption.IGNORE_CASE)
+            val matches = regex.findAll(appDiv).map { it.value }.toList()
+            val chapterRegexMatches = matches.filter { it.contains("/page/") || it.contains("/chapter") || it.contains("token=") }.distinct()
+            imageUrls = chapterRegexMatches.ifEmpty { matches.distinct() }
+        }
+
+        if (imageUrls.isEmpty()) {
+            throw Exception("No pages found in JSON payload. Ensure Cloudflare is bypassed.")
+        }
+
+        // Sort numbered token pages sequentially to prevent scrambled chapter reading
+        if (imageUrls.all { it.contains("/page/") }) {
+            val pageNumberRegex = """/page/(\d+)""".toRegex(RegexOption.IGNORE_CASE)
+            imageUrls = imageUrls.sortedBy { url ->
                 pageNumberRegex.find(url)?.groupValues?.get(1)?.toIntOrNull() ?: 0
             }
-            
-            imageUrls.addAll(sortedUrls)
-        }
-
-        // Failsafe error message
-        if (imageUrls.isEmpty()) {
-            throw Exception("No pages found in JSON payload. Size: ${appDiv.length}")
         }
 
         imageUrls.mapIndexed { index, imgUrl ->
