@@ -24,7 +24,6 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.asJsoup
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
@@ -99,7 +98,7 @@ class TheBlank : HttpSource() {
         val mangas = trending.mapNotNull { it.jsonObject }.map { obj ->
             SManga.create().apply {
                 val rawUrl = obj.getString("link") ?: "/serie/${obj.getString("slug")}"
-                this.url = rawUrl.removePrefix(baseUrl) // Fixes the corrupted duplicate URL issue
+                this.url = rawUrl.removePrefix(baseUrl)
                 this.title = obj.getString("title") ?: "Unknown"
                 this.thumbnail_url = obj.getString("image")?.let { if (it.startsWith("http")) it else "$baseUrl$it" }
             }
@@ -238,17 +237,15 @@ class TheBlank : HttpSource() {
         val props = getInertiaProps(reqUrl)
         
         val chaptersList = mutableListOf<SChapter>()
-        
-        // Strategy 1: Standard Pam CMS location
         val serie = props.getObject("serie") ?: props.getObject("data")
         val chaptersArray = serie?.getArray("chapters") ?: serie?.getObject("chapters")?.getArray("data") ?: props.getArray("chapters") ?: props.getObject("chapters")?.getArray("data")
         
         if (chaptersArray != null && chaptersArray.isNotEmpty()) {
             chaptersArray.mapNotNull { it.jsonObject }.forEach { obj ->
                 val slug = obj.getString("slug") ?: return@forEach
-                val chapNum = obj.getString("chapterNumber") ?: obj.getString("chapter_number")
+                val chapNum = obj.getString("chapter_number") ?: obj.getString("chapterNumber")
                 val title = obj.getString("title") ?: obj.getString("name") ?: "Chapter $chapNum"
-                val dateStr = obj.getString("createdAt") ?: obj.getString("created_at") ?: obj.getString("published_at")
+                val dateStr = obj.getString("createdAt") ?: obj.getString("created_at")
                 
                 chaptersList.add(SChapter.create().apply {
                     this.url = "/serie/${manga.url.substringAfterLast("/serie/").substringBefore("/")}/chapter/$slug"
@@ -259,37 +256,8 @@ class TheBlank : HttpSource() {
             }
         }
         
-        // Strategy 2: Deep Pam Scanner Fallback (if they hid the array)
         if (chaptersList.isEmpty()) {
-            fun findChapters(element: JsonElement) {
-                if (element is JsonArray) {
-                    val first = element.firstOrNull()?.jsonObject
-                    if (first != null && first.containsKey("slug") && (first.containsKey("chapterNumber") || first.containsKey("chapter_number"))) {
-                        element.mapNotNull { it.jsonObject }.forEach { obj ->
-                            val slug = obj.getString("slug") ?: return@forEach
-                            val chapNum = obj.getString("chapterNumber") ?: obj.getString("chapter_number")
-                            val title = obj.getString("title") ?: obj.getString("name") ?: "Chapter $chapNum"
-                            val dateStr = obj.getString("createdAt") ?: obj.getString("created_at")
-                            
-                            chaptersList.add(SChapter.create().apply {
-                                this.url = "/serie/${manga.url.substringAfterLast("/serie/").substringBefore("/")}/chapter/$slug"
-                                this.name = title
-                                this.date_upload = parseDate(dateStr)
-                                this.chapter_number = chapNum?.toFloatOrNull() ?: -1f
-                            })
-                        }
-                    } else {
-                        element.forEach { findChapters(it) }
-                    }
-                } else if (element is JsonObject) {
-                    element.forEach { (_, v) -> findChapters(v) }
-                }
-            }
-            findChapters(props)
-        }
-        
-        if (chaptersList.isEmpty()) {
-            throw Exception("No chapters found in JSON. The page might be empty or Cloudflare blocked it.")
+            throw Exception("No chapters found in JSON payload.")
         }
         
         return@fromCallable chaptersList.distinctBy { it.url }.sortedByDescending { it.chapter_number }
@@ -320,51 +288,41 @@ class TheBlank : HttpSource() {
         }
 
         val root = json.parseToJsonElement(appDiv!!).jsonObject
-        val chapterObj = root.getObject("props")?.getObject("chapter") ?: root.getObject("props")?.getObject("data") ?: root
+        val props = root.getObject("props") ?: root
+        val data = props.getObject("data") ?: props.getObject("chapter") ?: props
 
-        val imageUrls = mutableListOf<String>()
+        val pageCount = data.getInt("page_count") ?: props.getInt("page_count")
+        val chapterToken = data.getString("chapter_token") ?: props.getString("chapter_token")
 
-        fun extractStrings(element: JsonElement) {
-            when (element) {
-                is kotlinx.serialization.json.JsonPrimitive -> {
-                    val str = element.contentOrNull
-                    if (str != null) {
-                        if (str.contains("/page/") && str.contains("token=") && str.contains("sig=")) {
-                            imageUrls.add(str)
-                        } 
-                        else if (str.matches(".*\\.(jpg|jpeg|png|webp)(\\?.*)?$".toRegex(RegexOption.IGNORE_CASE))) {
-                            imageUrls.add(str)
-                        }
-                    }
+        val cleanChapterUrl = chapter.url.substringBefore("?")
+
+        // Primary Pam Token Construction
+        if (pageCount != null && pageCount > 0 && !chapterToken.isNullOrBlank()) {
+            return@fromCallable (1..pageCount).map { i ->
+                val pageUrl = "$baseUrl$cleanChapterUrl/page/$i?token=$chapterToken"
+                Page(i - 1, imageUrl = pageUrl)
+            }
+        }
+
+        // Fallback for unprotected static image arrays
+        val imagesArr = data.getArray("images") ?: props.getArray("images")
+        if (imagesArr != null && imagesArr.isNotEmpty()) {
+            val urls = imagesArr.mapNotNull { element ->
+                if (element is kotlinx.serialization.json.JsonPrimitive) {
+                    element.contentOrNull
+                } else if (element is JsonObject) {
+                    element.getString("url") ?: element.getString("image") ?: element.getString("src")
+                } else null
+            }
+            if (urls.isNotEmpty()) {
+                return@fromCallable urls.mapIndexed { index, imgUrl ->
+                    val fullUrl = if (imgUrl.startsWith("http")) imgUrl else "$baseUrl$imgUrl"
+                    Page(index, imageUrl = fullUrl)
                 }
-                is JsonArray -> element.forEach { extractStrings(it) }
-                is JsonObject -> element.forEach { (_, v) -> extractStrings(v) }
             }
         }
-        
-        extractStrings(chapterObj)
-        
-        var distinctUrls = imageUrls.distinct()
 
-        distinctUrls = distinctUrls.filterNot { it.contains("banners/", ignoreCase = true) }
-
-        if (distinctUrls.isEmpty()) {
-            throw Exception("No pages found in chapter data. Cloudflare might be blocking the payload.")
-        }
-
-        val sortedUrls = if (distinctUrls.any { it.contains("/page/") }) {
-            val pageRegex = """/page/(\d+)""".toRegex(RegexOption.IGNORE_CASE)
-            distinctUrls.sortedBy { url ->
-                pageRegex.find(url)?.groupValues?.get(1)?.toIntOrNull() ?: 0
-            }
-        } else {
-            distinctUrls
-        }
-
-        sortedUrls.mapIndexed { index, imgUrl ->
-            val fullUrl = if (imgUrl.startsWith("http")) imgUrl else "$baseUrl$imgUrl"
-            Page(index, imageUrl = fullUrl)
-        }
+        throw Exception("No pages found in JSON payload (page_count or images missing).")
     }
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
