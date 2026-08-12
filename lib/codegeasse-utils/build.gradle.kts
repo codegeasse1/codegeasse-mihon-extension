@@ -13,6 +13,12 @@ android {
     }
 }
 
+// Add JitPack directly here so this specific module can find Injekt!
+repositories {
+    mavenCentral()
+    maven { url = uri("https://jitpack.io") }
+}
+
 dependencies {
     compileOnly("com.github.mihonapp:tachiyomix:1.6.0")
     
