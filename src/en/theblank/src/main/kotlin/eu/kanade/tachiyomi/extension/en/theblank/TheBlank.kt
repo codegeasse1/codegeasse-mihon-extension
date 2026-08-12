@@ -14,6 +14,7 @@ import android.webkit.WebViewClient
 import codegeasse.utils.applicationContext
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.interceptor.rateLimit
+import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
@@ -30,6 +31,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import okhttp3.Response
@@ -76,8 +78,7 @@ class TheBlank : HttpSource() {
         var appDiv = document.selectFirst("div#app")?.attr("data-page")
 
         if (appDiv.isNullOrBlank() || document.title().contains("Just a moment", true)) {
-            val payload = runInWebView(requestUrl)
-            appDiv = payload
+            appDiv = runInWebView(requestUrl)
         }
 
         val root = json.parseToJsonElement(appDiv!!).jsonObject
@@ -85,7 +86,7 @@ class TheBlank : HttpSource() {
     }
 
     // ============================== Popular ==============================
-    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/?page=$page", headers)
+    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/search?sort=views&page=$page", headers)
 
     override fun popularMangaParse(response: Response): MangasPage = throw UnsupportedOperationException()
 
@@ -93,7 +94,7 @@ class TheBlank : HttpSource() {
         val reqUrl = popularMangaRequest(page).url.toString()
         val props = getInertiaProps(reqUrl)
 
-        val trending = props.getArray("trendingSerie") ?: props.getObject("latestChapters")?.getArray("data") ?: emptyList()
+        val trending = props.getObject("series")?.getArray("data") ?: props.getArray("data") ?: emptyList()
 
         val mangas = trending.mapNotNull { it.jsonObject }.map { obj ->
             SManga.create().apply {
@@ -103,7 +104,7 @@ class TheBlank : HttpSource() {
             }
         }
         
-        val meta = props.getObject("latestChapters")?.getObject("meta")
+        val meta = props.getObject("series")?.getObject("meta")
         val currentPage = meta?.getInt("current_page") ?: 1
         val lastPage = meta?.getInt("last_page") ?: 1
 
@@ -111,7 +112,7 @@ class TheBlank : HttpSource() {
     }
 
     // ============================== Latest ===============================
-    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/?page=$page", headers)
+    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/search?sort=recently&page=$page", headers)
 
     override fun latestUpdatesParse(response: Response): MangasPage = throw UnsupportedOperationException()
 
@@ -119,7 +120,7 @@ class TheBlank : HttpSource() {
         val reqUrl = latestUpdatesRequest(page).url.toString()
         val props = getInertiaProps(reqUrl)
 
-        val latest = props.getObject("latestChapters")?.getArray("data") ?: emptyList()
+        val latest = props.getObject("series")?.getArray("data") ?: props.getArray("data") ?: emptyList()
 
         val mangas = latest.mapNotNull { it.jsonObject }.map { obj ->
             SManga.create().apply {
@@ -129,16 +130,51 @@ class TheBlank : HttpSource() {
             }
         }
         
-        val meta = props.getObject("latestChapters")?.getObject("meta")
+        val meta = props.getObject("series")?.getObject("meta")
         val currentPage = meta?.getInt("current_page") ?: 1
         val lastPage = meta?.getInt("last_page") ?: 1
 
         MangasPage(mangas, currentPage < lastPage)
     }
 
-    // ============================== Search ===============================
+    // ============================== Search & Filters =====================
+    
+    override fun getFilterList() = FilterList(
+        Filter.Header("Text search ignores filters!"),
+        Filter.Separator(),
+        SortFilter(),
+        GenreFilter(),
+        TypeFilter(),
+        StatusFilter(),
+    )
+
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        return GET("$baseUrl/search?q=${query.trim()}&page=$page", headers) 
+        val url = baseUrl.toHttpUrl().newBuilder().apply {
+            addPathSegment("search")
+            addQueryParameter("page", page.toString())
+
+            if (query.isNotBlank()) {
+                addQueryParameter("q", query.trim())
+            } else {
+                filters.filterIsInstance<SortFilter>().firstOrNull()?.let {
+                    val sortValue = sortValues[it.state?.index ?: 2].second
+                    addQueryParameter("sort", sortValue)
+                }
+
+                filters.filterIsInstance<GenreFilter>().firstOrNull()?.state?.forEach {
+                    if (it.state == Filter.TriState.STATE_INCLUDE) addQueryParameter("genres[]", it.value)
+                }
+                
+                filters.filterIsInstance<TypeFilter>().firstOrNull()?.state?.forEach {
+                    if (it.state == Filter.TriState.STATE_INCLUDE) addQueryParameter("types[]", it.value)
+                }
+                
+                filters.filterIsInstance<StatusFilter>().firstOrNull()?.state?.forEach {
+                    if (it.state) addQueryParameter("status[]", it.value)
+                }
+            }
+        }.build()
+        return GET(url, headers)
     }
 
     override fun searchMangaParse(response: Response): MangasPage = throw UnsupportedOperationException()
@@ -236,61 +272,53 @@ class TheBlank : HttpSource() {
         }
 
         val root = json.parseToJsonElement(appDiv!!).jsonObject
-        
-        // Deep Array Traversal: Finds the largest array of URLs in the entire JSON payload
-        var largestArray: List<String> = emptyList()
+        val chapterObj = root.getObject("props")?.getObject("chapter") ?: root.getObject("props")?.getObject("data") ?: root
 
-        fun traverse(element: JsonElement) {
-            if (element is JsonArray) {
-                val urls = mutableListOf<String>()
-                for (item in element) {
-                    if (item is kotlinx.serialization.json.JsonPrimitive) {
-                        val str = item.contentOrNull
-                        if (str != null && str.contains("/") && (str.contains("token=") || str.contains("sig=") || str.matches(".*\\.(jpg|jpeg|png|webp)(\\?.*)?$".toRegex(RegexOption.IGNORE_CASE)))) {
-                            urls.add(str)
+        val imageUrls = mutableListOf<String>()
+
+        // Pam Extraction: We recursively scan ONLY the chapter object so we don't accidentally grab site banners.
+        fun extractStrings(element: JsonElement) {
+            when (element) {
+                is kotlinx.serialization.json.JsonPrimitive -> {
+                    val str = element.contentOrNull
+                    if (str != null) {
+                        // The true Pam tokenized images
+                        if (str.contains("/page/") && str.contains("token=") && str.contains("sig=")) {
+                            imageUrls.add(str)
+                        } 
+                        // Standard unprotected images
+                        else if (str.matches(".*\\.(jpg|jpeg|png|webp)(\\?.*)?$".toRegex(RegexOption.IGNORE_CASE))) {
+                            imageUrls.add(str)
                         }
-                    } else if (item is JsonObject) {
-                        val str = item.values.mapNotNull { it.jsonPrimitive?.contentOrNull }.firstOrNull { s ->
-                            s.contains("/") && (s.contains("token=") || s.contains("sig=") || s.matches(".*\\.(jpg|jpeg|png|webp)(\\?.*)?$".toRegex(RegexOption.IGNORE_CASE)))
-                        }
-                        if (str != null) urls.add(str)
                     }
                 }
-                if (urls.size > largestArray.size) {
-                    largestArray = urls
-                }
-                element.forEach { traverse(it) }
-            } else if (element is JsonObject) {
-                element.forEach { (_, v) -> traverse(v) }
+                is JsonArray -> element.forEach { extractStrings(it) }
+                is JsonObject -> element.forEach { (_, v) -> extractStrings(v) }
             }
         }
-
-        traverse(root)
         
-        // Filter out advertisement banners to keep the list clean
-        var imageUrls = largestArray.filterNot { it.contains("banners/", ignoreCase = true) }.distinct()
+        extractStrings(chapterObj)
+        
+        var distinctUrls = imageUrls.distinct()
 
-        // Fallback: If traversal fails, scan the raw JSON string globally
-        if (imageUrls.isEmpty()) {
-            val regex = """(https?://[^"'\\]+|/[^"'\\]+)(?:\.(?:jpg|jpeg|png|webp)(?:\?[^"'\\]+)?|/page/\d+\?[^"'\\]+)""".toRegex(RegexOption.IGNORE_CASE)
-            val matches = regex.findAll(appDiv).map { it.value }.toList()
-            val chapterRegexMatches = matches.filter { it.contains("/page/") || it.contains("/chapter") || it.contains("token=") }.distinct()
-            imageUrls = chapterRegexMatches.ifEmpty { matches.distinct() }
+        // Extremely aggressive filtering to ensure we drop navigational banners
+        distinctUrls = distinctUrls.filterNot { it.contains("banners/", ignoreCase = true) }
+
+        if (distinctUrls.isEmpty()) {
+            throw Exception("No pages found in chapter data. Cloudflare might be blocking the payload.")
         }
 
-        if (imageUrls.isEmpty()) {
-            throw Exception("No pages found in JSON payload. Ensure Cloudflare is bypassed.")
-        }
-
-        // Sort numbered token pages sequentially to prevent scrambled chapter reading
-        if (imageUrls.all { it.contains("/page/") }) {
-            val pageNumberRegex = """/page/(\d+)""".toRegex(RegexOption.IGNORE_CASE)
-            imageUrls = imageUrls.sortedBy { url ->
-                pageNumberRegex.find(url)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        // Pam CMS paginates the tokens numerically. This ensures reading order is always perfect.
+        val sortedUrls = if (distinctUrls.any { it.contains("/page/") }) {
+            val pageRegex = """/page/(\d+)""".toRegex(RegexOption.IGNORE_CASE)
+            distinctUrls.sortedBy { url ->
+                pageRegex.find(url)?.groupValues?.get(1)?.toIntOrNull() ?: 0
             }
+        } else {
+            distinctUrls
         }
 
-        imageUrls.mapIndexed { index, imgUrl ->
+        sortedUrls.mapIndexed { index, imgUrl ->
             val fullUrl = if (imgUrl.startsWith("http")) imgUrl else "$baseUrl$imgUrl"
             Page(index, imageUrl = fullUrl)
         }
@@ -453,5 +481,88 @@ class TheBlank : HttpSource() {
             }
             return true
         }
+    }
+
+    // ============================== Filter Classes ==============================
+    
+    class TriStateFilter(name: String, val value: String) : Filter.TriState(name)
+    class CheckBoxFilter(name: String, val value: String) : Filter.CheckBox(name)
+    
+    class SortFilter : Filter.Sort("Sort", sortValues.map { it.first }.toTypedArray(), Selection(2, false))
+    class GenreFilter : Filter.Group<TriStateFilter>("Genres", genres.map { TriStateFilter(it.first, it.second) })
+    class TypeFilter : Filter.Group<TriStateFilter>("Types", types.map { TriStateFilter(it.first, it.second) })
+    class StatusFilter : Filter.Group<CheckBoxFilter>("Status", statuses.map { CheckBoxFilter(it.first, it.second) })
+
+    companion object {
+        private val sortValues = listOf(
+            "New Series" to "date",
+            "Trending" to "trending",
+            "Recently Updated" to "recently",
+            "Most Views" to "views",
+            "A-Z" to "alphabetical"
+        )
+
+        private val genres = listOf(
+            "Action" to "action",
+            "Adventure" to "adventure",
+            "Ai" to "ai",
+            "Animated" to "animated",
+            "Anthology" to "anthology",
+            "Cohabitation" to "cohabitation",
+            "College" to "college",
+            "Comedy" to "comedy",
+            "Doujinshi" to "doujinshi",
+            "Drama" to "drama",
+            "Fantasy" to "fantasy",
+            "Folklore" to "folklore",
+            "Harem" to "harem",
+            "Historical" to "historical",
+            "Horror" to "horror",
+            "Isekai" to "isekai",
+            "Josei" to "josei",
+            "Love triangle" to "love-triangle",
+            "Martial arts" to "martial-arts",
+            "Mature" to "mature",
+            "Murim" to "murim",
+            "Mystery" to "mystery",
+            "Office workers" to "office-workers",
+            "Psychological" to "psychological",
+            "Robots" to "robots",
+            "Romance" to "romance",
+            "School life" to "school-life",
+            "Sci-fi" to "sci-fi",
+            "Seinen" to "seinen",
+            "Shoujo" to "shoujo",
+            "Shounen" to "shounen",
+            "Slice of life" to "slice-of-life",
+            "Smut" to "smut",
+            "Sports" to "sports",
+            "Supernatural" to "supernatural",
+            "Superpower" to "superpower",
+            "System" to "system",
+            "Thriller" to "thriller",
+            "Uncensored" to "uncensored",
+            "Violence" to "violence",
+            "Workplace" to "workplace"
+        )
+
+        private val types = listOf(
+            "Comic" to "comic",
+            "Doujin" to "doujin",
+            "Josei" to "josei",
+            "Manga" to "manga",
+            "Manhua" to "manhua",
+            "Manhwa" to "manhwa",
+            "Pornhwa" to "pornhwa",
+            "Webtoon" to "webtoon"
+        )
+
+        private val statuses = listOf(
+            "Ongoing" to "ongoing",
+            "Finished" to "finished",
+            "Dropped" to "dropped",
+            "On Hold" to "onhold",
+            "Upcoming" to "upcoming"
+        )
     }
 }
