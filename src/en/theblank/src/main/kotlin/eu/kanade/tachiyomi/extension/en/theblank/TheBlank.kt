@@ -29,10 +29,10 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import okhttp3.Response
 import okio.Buffer
-import org.jsoup.nodes.Document
 import rx.Observable
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -69,13 +69,13 @@ class TheBlank : HttpSource() {
     private fun JsonObject.getArray(key: String): JsonArray? = this[key]?.jsonArray
     private fun JsonObject.getObject(key: String): JsonObject? = this[key]?.jsonObject
 
-    private fun getInertiaProps(url: String): JsonObject {
-        val request = GET(url, headers)
+    private fun getInertiaProps(requestUrl: String): JsonObject {
+        val request = GET(requestUrl, headers)
         val document = client.newCall(request).execute().asJsoup()
         var appDiv = document.selectFirst("div#app")?.attr("data-page")
 
         if (appDiv.isNullOrBlank() || document.title().contains("Just a moment", true)) {
-            val payload = runInWebView(url)
+            val payload = runInWebView(requestUrl)
             appDiv = payload
         }
 
@@ -89,17 +89,17 @@ class TheBlank : HttpSource() {
     override fun popularMangaParse(response: Response): MangasPage = throw UnsupportedOperationException()
 
     override fun fetchPopularManga(page: Int): Observable<MangasPage> = Observable.fromCallable {
-        val url = popularMangaRequest(page).url.toString()
-        val props = getInertiaProps(url)
+        val reqUrl = popularMangaRequest(page).url.toString()
+        val props = getInertiaProps(reqUrl)
 
         // The Blank homepage stores popular under trendingSerie
         val trending = props.getArray("trendingSerie") ?: props.getObject("latestChapters")?.getArray("data") ?: emptyList()
 
         val mangas = trending.mapNotNull { it.jsonObject }.map { obj ->
             SManga.create().apply {
-                url = obj.getString("link") ?: "/serie/${obj.getString("slug")}"
-                title = obj.getString("title") ?: "Unknown"
-                thumbnail_url = obj.getString("image")?.let { if (it.startsWith("http")) it else "$baseUrl$it" }
+                this.url = obj.getString("link") ?: "/serie/${obj.getString("slug")}"
+                this.title = obj.getString("title") ?: "Unknown"
+                this.thumbnail_url = obj.getString("image")?.let { if (it.startsWith("http")) it else "$baseUrl$it" }
             }
         }
         
@@ -117,16 +117,16 @@ class TheBlank : HttpSource() {
     override fun latestUpdatesParse(response: Response): MangasPage = throw UnsupportedOperationException()
 
     override fun fetchLatestUpdates(page: Int): Observable<MangasPage> = Observable.fromCallable {
-        val url = latestUpdatesRequest(page).url.toString()
-        val props = getInertiaProps(url)
+        val reqUrl = latestUpdatesRequest(page).url.toString()
+        val props = getInertiaProps(reqUrl)
 
         val latest = props.getObject("latestChapters")?.getArray("data") ?: emptyList()
 
         val mangas = latest.mapNotNull { it.jsonObject }.map { obj ->
             SManga.create().apply {
-                url = obj.getString("link") ?: "/serie/${obj.getString("slug")}"
-                title = obj.getString("title") ?: "Unknown"
-                thumbnail_url = obj.getString("image")?.let { if (it.startsWith("http")) it else "$baseUrl$it" }
+                this.url = obj.getString("link") ?: "/serie/${obj.getString("slug")}"
+                this.title = obj.getString("title") ?: "Unknown"
+                this.thumbnail_url = obj.getString("image")?.let { if (it.startsWith("http")) it else "$baseUrl$it" }
             }
         }
         
@@ -145,16 +145,16 @@ class TheBlank : HttpSource() {
     override fun searchMangaParse(response: Response): MangasPage = throw UnsupportedOperationException()
 
     override fun fetchSearchManga(page: Int, query: String, filters: FilterList): Observable<MangasPage> = Observable.fromCallable {
-        val url = searchMangaRequest(page, query, filters).url.toString()
-        val props = getInertiaProps(url)
+        val reqUrl = searchMangaRequest(page, query, filters).url.toString()
+        val props = getInertiaProps(reqUrl)
 
         val searchResults = props.getObject("series")?.getArray("data") ?: props.getArray("data") ?: props.getArray("series") ?: emptyList()
 
         val mangas = searchResults.mapNotNull { it.jsonObject }.map { obj ->
             SManga.create().apply {
-                url = obj.getString("link") ?: "/serie/${obj.getString("slug")}"
-                title = obj.getString("title") ?: "Unknown"
-                thumbnail_url = obj.getString("image")?.let { if (it.startsWith("http")) it else "$baseUrl$it" }
+                this.url = obj.getString("link") ?: "/serie/${obj.getString("slug")}"
+                this.title = obj.getString("title") ?: "Unknown"
+                this.thumbnail_url = obj.getString("image")?.let { if (it.startsWith("http")) it else "$baseUrl$it" }
             }
         }
 
@@ -171,22 +171,22 @@ class TheBlank : HttpSource() {
     override fun mangaDetailsParse(response: Response): SManga = throw UnsupportedOperationException()
 
     override fun fetchMangaDetails(manga: SManga): Observable<SManga> = Observable.fromCallable {
-        val url = baseUrl + manga.url
-        val props = getInertiaProps(url)
+        val reqUrl = baseUrl + manga.url
+        val props = getInertiaProps(reqUrl)
         
         val serie = props.getObject("serie") ?: props.getObject("data") ?: throw Exception("Serie data not found")
         
         manga.apply {
-            title = serie.getString("title") ?: title
-            thumbnail_url = serie.getString("image")?.let { if (it.startsWith("http")) it else "$baseUrl$it" } ?: thumbnail_url
-            description = serie.getString("description") ?: serie.getString("synopsis") ?: ""
-            status = when (serie.getString("serie_status")?.lowercase()) {
+            this.title = serie.getString("title") ?: title
+            this.thumbnail_url = serie.getString("image")?.let { if (it.startsWith("http")) it else "$baseUrl$it" } ?: thumbnail_url
+            this.description = serie.getString("description") ?: serie.getString("synopsis") ?: ""
+            this.status = when (serie.getString("serie_status")?.lowercase()) {
                 "ongoing" -> SManga.ONGOING
                 "finished", "completed" -> SManga.COMPLETED
                 "onhold", "hiatus" -> SManga.ON_HIATUS
                 else -> SManga.UNKNOWN
             }
-            genre = serie.getArray("genres_slugs")?.mapNotNull { it.jsonPrimitive.contentOrNull?.replaceFirstChar { c -> c.uppercase() } }?.joinToString()
+            this.genre = serie.getArray("genres_slugs")?.mapNotNull { it.jsonPrimitive.contentOrNull?.replaceFirstChar { c -> c.uppercase() } }?.joinToString()
         }
     }
 
@@ -196,18 +196,18 @@ class TheBlank : HttpSource() {
     override fun chapterListParse(response: Response): List<SChapter> = throw UnsupportedOperationException()
 
     override fun fetchChapterList(manga: SManga): Observable<List<SChapter>> = Observable.fromCallable {
-        val url = baseUrl + manga.url
-        val props = getInertiaProps(url)
+        val reqUrl = baseUrl + manga.url
+        val props = getInertiaProps(reqUrl)
         
         val serie = props.getObject("serie") ?: props.getObject("data") ?: throw Exception("Serie data not found")
         val chaptersArr = serie.getArray("chapters") ?: emptyList()
         
         chaptersArr.mapNotNull { it.jsonObject }.map { obj ->
             SChapter.create().apply {
-                url = manga.url + "/chapter/" + obj.getString("slug")
-                name = obj.getString("title") ?: "Chapter ${obj.getInt("chapterNumber") ?: ""}"
-                date_upload = parseDate(obj.getString("createdAt"))
-                chapter_number = obj.getInt("chapterNumber")?.toFloat() ?: -1f
+                this.url = manga.url + "/chapter/" + obj.getString("slug")
+                this.name = obj.getString("title") ?: "Chapter ${obj.getInt("chapterNumber") ?: ""}"
+                this.date_upload = parseDate(obj.getString("createdAt"))
+                this.chapter_number = obj.getInt("chapterNumber")?.toFloat() ?: -1f
             }
         }.sortedByDescending { it.chapter_number }
     }
@@ -227,8 +227,8 @@ class TheBlank : HttpSource() {
     override fun pageListParse(response: Response): List<Page> = throw UnsupportedOperationException()
 
     override fun fetchPageList(chapter: SChapter): Observable<List<Page>> = Observable.fromCallable {
-        val url = baseUrl + chapter.url
-        val props = getInertiaProps(url)
+        val reqUrl = baseUrl + chapter.url
+        val props = getInertiaProps(reqUrl)
         
         val chapterData = props.getObject("chapter") ?: props
         val images = chapterData.getArray("images") ?: props.getArray("images") ?: emptyList()
@@ -245,7 +245,7 @@ class TheBlank : HttpSource() {
 
     @SuppressLint("SetJavaScriptEnabled")
     @Synchronized
-    private fun runInWebView(url: String): String {
+    private fun runInWebView(targetUrl: String): String {
         val handler = Handler(Looper.getMainLooper())
         val payloadResult = WebViewPayloadResult()
         val pool = ('a'..'z') + ('A'..'Z')
@@ -342,7 +342,7 @@ class TheBlank : HttpSource() {
                 }
                 injectScript = retry
 
-                view.loadUrl(url)
+                view.loadUrl(targetUrl)
                 handler.post(retry)
             } catch (error: Throwable) {
                 startupError.set(error)
