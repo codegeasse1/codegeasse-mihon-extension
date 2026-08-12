@@ -24,6 +24,7 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.asJsoup
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
@@ -31,7 +32,6 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import okhttp3.Response
 import okio.Buffer
@@ -63,6 +63,7 @@ class TheBlank : HttpSource() {
         .add("Referer", "$baseUrl/")
         .add("Origin", baseUrl)
         .add("Accept", "*/*")
+        .add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36")
 
     // ============================== Helpers ==============================
 
@@ -77,7 +78,7 @@ class TheBlank : HttpSource() {
         var appDiv = document.selectFirst("div#app")?.attr("data-page")
 
         if (appDiv.isNullOrBlank() || document.title().contains("Just a moment", true)) {
-            appDiv = runInWebView(requestUrl)
+            appDiv = runInWebViewForDataPage(requestUrl)
         }
 
         val root = json.parseToJsonElement(appDiv!!).jsonObject
@@ -247,8 +248,12 @@ class TheBlank : HttpSource() {
                 val title = obj.getString("title") ?: obj.getString("name") ?: "Chapter $chapNum"
                 val dateStr = obj.getString("createdAt") ?: obj.getString("created_at")
                 
+                // Safely build chapter URL to prevent 404s
+                val cleanMangaUrl = manga.url.substringBefore("?").trimEnd('/')
+                val mangaSlug = cleanMangaUrl.substringAfterLast("/")
+                
                 chaptersList.add(SChapter.create().apply {
-                    this.url = "/serie/${manga.url.substringAfterLast("/serie/").substringBefore("/")}/chapter/$slug"
+                    this.url = "/serie/$mangaSlug/chapter/$slug"
                     this.name = title
                     this.date_upload = parseDate(dateStr)
                     this.chapter_number = chapNum?.toFloatOrNull() ?: -1f
@@ -257,7 +262,7 @@ class TheBlank : HttpSource() {
         }
         
         if (chaptersList.isEmpty()) {
-            throw Exception("No chapters found in JSON payload.")
+            throw Exception("No chapters found. Cloudflare might be blocking the payload.")
         }
         
         return@fromCallable chaptersList.distinctBy { it.url }.sortedByDescending { it.chapter_number }
@@ -279,67 +284,87 @@ class TheBlank : HttpSource() {
 
     override fun fetchPageList(chapter: SChapter): Observable<List<Page>> = Observable.fromCallable {
         val reqUrl = baseUrl + chapter.url
+        
+        // 1. Get the page count from the JSON payload
         val request = GET(reqUrl, headers)
         val document = client.newCall(request).execute().asJsoup()
         var appDiv = document.selectFirst("div#app")?.attr("data-page")
 
         if (appDiv.isNullOrBlank() || document.title().contains("Just a moment", true)) {
-            appDiv = runInWebView(reqUrl)
+            appDiv = runInWebViewForDataPage(reqUrl)
         }
 
         val root = json.parseToJsonElement(appDiv!!).jsonObject
         val props = root.getObject("props") ?: root
         val data = props.getObject("data") ?: props.getObject("chapter") ?: props
 
-        val pageCount = data.getInt("page_count") ?: props.getInt("page_count")
-        val chapterToken = data.getString("chapter_token") ?: props.getString("chapter_token")
+        val pageCount = data.getInt("page_count") ?: props.getInt("page_count") ?: 0
 
-        val cleanChapterUrl = chapter.url.substringBefore("?")
+        // 2. Use the WebView Interceptor to bypass the cryptographic DRM and catch the lazy-loaded URLs
+        val signedUrls = collectSignedUrlsFromWebView(reqUrl, pageCount)
 
-        // Primary Pam Token Construction
-        if (pageCount != null && pageCount > 0 && !chapterToken.isNullOrBlank()) {
-            return@fromCallable (1..pageCount).map { i ->
-                val pageUrl = "$baseUrl$cleanChapterUrl/page/$i?token=$chapterToken"
-                Page(i - 1, imageUrl = pageUrl)
-            }
-        }
+        val imageUrls = mutableListOf<String>()
 
-        // Fallback for unprotected static image arrays
-        val imagesArr = data.getArray("images") ?: props.getArray("images")
-        if (imagesArr != null && imagesArr.isNotEmpty()) {
-            val urls = imagesArr.mapNotNull { element ->
-                if (element is kotlinx.serialization.json.JsonPrimitive) {
-                    element.contentOrNull
-                } else if (element is JsonObject) {
-                    element.getString("url") ?: element.getString("image") ?: element.getString("src")
-                } else null
-            }
-            if (urls.isNotEmpty()) {
-                return@fromCallable urls.mapIndexed { index, imgUrl ->
-                    val fullUrl = if (imgUrl.startsWith("http")) imgUrl else "$baseUrl$imgUrl"
-                    Page(index, imageUrl = fullUrl)
+        if (signedUrls.isNotEmpty()) {
+            imageUrls.addAll(signedUrls)
+        } else {
+            // Fallback for unprotected static images if CF is off
+            fun extractStrings(element: JsonElement) {
+                when (element) {
+                    is kotlinx.serialization.json.JsonPrimitive -> {
+                        val str = element.contentOrNull
+                        if (str != null && str.matches(".*\\.(jpg|jpeg|png|webp)(\\?.*)?$".toRegex(RegexOption.IGNORE_CASE))) {
+                            imageUrls.add(str)
+                        }
+                    }
+                    is JsonArray -> element.forEach { extractStrings(it) }
+                    is JsonObject -> element.forEach { (_, v) -> extractStrings(v) }
                 }
             }
+            extractStrings(data)
         }
 
-        throw Exception("No pages found in JSON payload (page_count or images missing).")
+        var distinctUrls = imageUrls.distinct()
+        distinctUrls = distinctUrls.filterNot { it.contains("banners/", ignoreCase = true) }
+
+        if (distinctUrls.isEmpty()) {
+            throw Exception("Failed to load pages. Ensure Cloudflare is bypassed.")
+        }
+
+        val sortedUrls = if (distinctUrls.any { it.contains("/page/") }) {
+            val pageRegex = """/page/(\d+)""".toRegex(RegexOption.IGNORE_CASE)
+            distinctUrls.sortedBy { url ->
+                pageRegex.find(url)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            }
+        } else {
+            distinctUrls
+        }
+
+        sortedUrls.mapIndexed { index, imgUrl ->
+            val fullUrl = if (imgUrl.startsWith("http")) imgUrl else "$baseUrl$imgUrl"
+            Page(index, imageUrl = fullUrl)
+        }
     }
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
 
-    // ============================= WebView Bypasser =============================
+    // ============================= WebView Bypassers =============================
 
+    /**
+     * Extracts the raw Inertia JSON data if the normal OkHttp request gets Cloudflare blocked.
+     */
     @SuppressLint("SetJavaScriptEnabled")
     @Synchronized
-    private fun runInWebView(targetUrl: String): String {
+    private fun runInWebViewForDataPage(targetUrl: String): String {
         val handler = Handler(Looper.getMainLooper())
         val payloadResult = WebViewPayloadResult()
         val pool = ('a'..'z') + ('A'..'Z')
         val interfaceName = (1..(10..20).random()).map { pool.random() }.joinToString("")
-        val emptyResponse = WebResourceResponse("text/plain", "utf-8", Buffer().inputStream())
         val active = AtomicBoolean(true)
         val started = Semaphore(0)
-        val startupError = AtomicReference<Throwable?>()
+        
+        var webView: WebView? = null
+        var injectScript: Runnable? = null
 
         val script = """
             (function () {
@@ -352,112 +377,146 @@ class TheBlank : HttpSource() {
             })();
         """.trimIndent()
 
-        var webView: WebView? = null
-        var injectScript: Runnable? = null
-
         handler.post {
-            try {
-                if (!active.get()) return@post
+            val view = WebView(applicationContext)
+            webView = view
 
-                val view = WebView(applicationContext)
-                webView = view
+            with(view.settings) {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                userAgentString = headers["User-Agent"]
+            }
 
-                runCatching {
-                    view.layoutParams = ViewGroup.LayoutParams(1080, 1920)
-                    view.measure(
-                        View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY),
-                        View.MeasureSpec.makeMeasureSpec(1920, View.MeasureSpec.EXACTLY),
-                    )
-                    view.layout(0, 0, 1080, 1920)
-                }
+            CookieManager.getInstance().apply {
+                setAcceptCookie(true)
+                setAcceptThirdPartyCookies(view, true)
+            }
 
-                with(view.settings) {
-                    javaScriptEnabled = true
-                    domStorageEnabled = true
-                    databaseEnabled = true
-                    loadWithOverviewMode = true
-                    useWideViewPort = true
-                    blockNetworkImage = true 
-                    userAgentString = headers["User-Agent"]
-                }
-
-                CookieManager.getInstance().apply {
-                    setAcceptCookie(true)
-                    setAcceptThirdPartyCookies(view, true)
-                }
-
-                view.addJavascriptInterface(payloadResult, interfaceName)
-
-                view.webViewClient = object : WebViewClient() {
-                    override fun shouldInterceptRequest(
-                        view: WebView,
-                        request: WebResourceRequest,
-                    ): WebResourceResponse? {
-                        val requestUrl = request.url?.toString()?.toHttpUrlOrNull()
-                            ?: return super.shouldInterceptRequest(view, request)
-
-                        val path = requestUrl.encodedPath.lowercase()
-                        if (path.endsWith(".jpg") || path.endsWith(".jpeg") || path.endsWith(".png") ||
-                            path.endsWith(".webp") || path.endsWith(".gif") || path.endsWith(".mp4") ||
-                            path.endsWith(".woff") || path.endsWith(".woff2")
-                        ) {
-                            return emptyResponse
-                        }
-
-                        return super.shouldInterceptRequest(view, request)
-                    }
-
-                    override fun onPageFinished(view: WebView, url: String?) {
-                        super.onPageFinished(view, url)
-                        if (active.get() && payloadResult.payload == null) {
-                            runCatching { view.evaluateJavascript(script, null) }
-                        }
-                    }
-                }
-
-                val retry = object : Runnable {
-                    override fun run() {
-                        if (!active.get() || payloadResult.payload != null) return
+            view.addJavascriptInterface(payloadResult, interfaceName)
+            
+            view.webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView, url: String?) {
+                    super.onPageFinished(view, url)
+                    if (active.get() && payloadResult.payload == null) {
                         runCatching { view.evaluateJavascript(script, null) }
-                        if (active.get() && payloadResult.payload == null) {
-                            handler.postDelayed(this, 100L)
-                        }
                     }
                 }
-                injectScript = retry
-
-                view.loadUrl(targetUrl)
-                handler.post(retry)
-            } catch (error: Throwable) {
-                startupError.set(error)
-            } finally {
-                started.release()
             }
+
+            val retry = object : Runnable {
+                override fun run() {
+                    if (!active.get() || payloadResult.payload != null) return
+                    runCatching { view.evaluateJavascript(script, null) }
+                    if (active.get() && payloadResult.payload == null) {
+                        handler.postDelayed(this, 100L)
+                    }
+                }
+            }
+            injectScript = retry
+
+            view.loadUrl(targetUrl)
+            handler.post(retry)
+            started.release()
         }
 
-        val completed = try {
-            if (!started.tryAcquire(90L, TimeUnit.SECONDS)) {
-                throw Exception("Timed out starting WebView")
-            }
-            startupError.get()?.let {
-                throw Exception("Failed to start WebView", it)
-            }
-            payloadResult.await(90L, TimeUnit.SECONDS)
-        } finally {
-            active.set(false)
-            handler.post {
-                injectScript?.let(handler::removeCallbacks)
-                val view = webView
-                webView = null
-                runCatching { view?.stopLoading() }
-                runCatching { view?.destroy() }
-            }
+        started.acquire()
+        val success = payloadResult.await(90L, TimeUnit.SECONDS)
+        
+        active.set(false)
+        handler.post {
+            injectScript?.let(handler::removeCallbacks)
+            webView?.stopLoading()
+            webView?.destroy()
         }
 
-        if (!completed) {
-            throw Exception("Timed out waiting for Inertia JSON payload")
-        }
+        if (!success) throw Exception("Timed out waiting for Inertia JSON payload")
         return payloadResult.payload ?: throw Exception("Failed to capture Inertia payload")
+    }
+
+    /**
+     * Intercepts the signed cryptographic image URLs generated by the site's Vue frontend.
+     * Automatically scrolls the page down to trigger lazy loading.
+     */
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun collectSignedUrlsFromWebView(targetUrl: String, expectedCount: Int): List<String> {
+        val interceptedUrls = mutableSetOf<String>()
+        val handler = Handler(Looper.getMainLooper())
+        val started = Semaphore(0)
+        
+        var webView: WebView? = null
+        
+        handler.post {
+            val view = WebView(applicationContext)
+            webView = view
+            
+            runCatching {
+                view.layoutParams = ViewGroup.LayoutParams(1080, 1920)
+                view.measure(
+                    View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(1920, View.MeasureSpec.EXACTLY)
+                )
+                view.layout(0, 0, 1080, 1920)
+            }
+            
+            with(view.settings) {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                databaseEnabled = true
+                userAgentString = headers["User-Agent"]
+            }
+            
+            CookieManager.getInstance().apply {
+                setAcceptCookie(true)
+                setAcceptThirdPartyCookies(view, true)
+            }
+            
+            view.webViewClient = object : WebViewClient() {
+                override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                    val url = request.url.toString()
+                    // Target the uniquely generated DRM image URLs
+                    if (url.contains("/page/") && url.contains("sig=") && url.contains("token=")) {
+                        synchronized(interceptedUrls) {
+                            interceptedUrls.add(url)
+                        }
+                    }
+                    return super.shouldInterceptRequest(view, request)
+                }
+            }
+            
+            view.loadUrl(targetUrl)
+            started.release()
+        }
+        
+        started.acquire()
+        
+        val maxWaitMillis = 20000L // 20 seconds maximum wait for slow connections
+        val interval = 500L
+        var waited = 0L
+        
+        // Emulate a user scrolling down the page to force lazy-loaded images to request their tokens
+        val scrollScript = "window.scrollBy(0, 1500);"
+        
+        while (waited < maxWaitMillis) {
+            synchronized(interceptedUrls) {
+                if (expectedCount > 0 && interceptedUrls.size >= expectedCount) {
+                    break // All pages have been intercepted and signed!
+                }
+            }
+            handler.post {
+                webView?.evaluateJavascript(scrollScript, null)
+            }
+            Thread.sleep(interval)
+            waited += interval
+        }
+        
+        val finalUrls = synchronized(interceptedUrls) { interceptedUrls.toList() }
+        
+        handler.post {
+            webView?.stopLoading()
+            webView?.destroy()
+        }
+        
+        return finalUrls
     }
 
     private class WebViewPayloadResult {
