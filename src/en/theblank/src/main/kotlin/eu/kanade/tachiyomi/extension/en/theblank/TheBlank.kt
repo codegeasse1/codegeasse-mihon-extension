@@ -23,6 +23,7 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.asJsoup
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
@@ -92,7 +93,6 @@ class TheBlank : HttpSource() {
         val reqUrl = popularMangaRequest(page).url.toString()
         val props = getInertiaProps(reqUrl)
 
-        // The Blank homepage stores popular under trendingSerie
         val trending = props.getArray("trendingSerie") ?: props.getObject("latestChapters")?.getArray("data") ?: emptyList()
 
         val mangas = trending.mapNotNull { it.jsonObject }.map { obj ->
@@ -103,7 +103,6 @@ class TheBlank : HttpSource() {
             }
         }
         
-        // Homepage usually has meta info for pagination in latestChapters
         val meta = props.getObject("latestChapters")?.getObject("meta")
         val currentPage = meta?.getInt("current_page") ?: 1
         val lastPage = meta?.getInt("last_page") ?: 1
@@ -228,15 +227,59 @@ class TheBlank : HttpSource() {
 
     override fun fetchPageList(chapter: SChapter): Observable<List<Page>> = Observable.fromCallable {
         val reqUrl = baseUrl + chapter.url
-        val props = getInertiaProps(reqUrl)
+        val request = GET(reqUrl, headers)
+        val document = client.newCall(request).execute().asJsoup()
+        var appDiv = document.selectFirst("div#app")?.attr("data-page")
+
+        if (appDiv.isNullOrBlank() || document.title().contains("Just a moment", true)) {
+            appDiv = runInWebView(reqUrl)
+        }
+
+        val urls = extractChapterPages(appDiv!!)
         
-        val chapterData = props.getObject("chapter") ?: props
-        val images = chapterData.getArray("images") ?: props.getArray("images") ?: emptyList()
-        
-        images.mapNotNull { it.jsonPrimitive.contentOrNull }.mapIndexed { index, imgUrl ->
+        urls.mapIndexed { index, imgUrl ->
             val fullUrl = if (imgUrl.startsWith("http")) imgUrl else "$baseUrl$imgUrl"
             Page(index, imageUrl = fullUrl)
         }
+    }
+    
+    private fun extractChapterPages(appDiv: String): List<String> {
+        val root = json.parseToJsonElement(appDiv).jsonObject
+        val props = root.getObject("props") ?: root
+        
+        // Deep String Extraction: Scans the entire JSON for protected image URLs
+        val allStrings = mutableListOf<String>()
+        fun extractStrings(element: JsonElement) {
+            when (element) {
+                is kotlinx.serialization.json.JsonPrimitive -> element.contentOrNull?.let { allStrings.add(it) }
+                is JsonArray -> element.forEach { extractStrings(it) }
+                is JsonObject -> element.forEach { (_, v) -> extractStrings(v) }
+            }
+        }
+        extractStrings(root)
+        
+        // Filter for protected tokens (e.g., /page/1?token=...)
+        val protectedPages = allStrings.filter { it.contains("/page/") && it.contains("token=") }.distinct()
+        
+        if (protectedPages.isNotEmpty()) {
+            val pageNumberRegex = """/page/(\d+)""".toRegex()
+            return protectedPages.sortedBy { url ->
+                pageNumberRegex.find(url)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            }
+        }
+        
+        // Fallback for unprotected chapters
+        val staticPages = allStrings.filter { 
+            (it.contains("/chapters/") || it.contains("/pages/")) && 
+            it.matches(".*\\.(jpg|jpeg|png|webp).*".toRegex(RegexOption.IGNORE_CASE)) 
+        }.distinct()
+        
+        if (staticPages.isNotEmpty()) {
+            return staticPages
+        }
+        
+        val chapterObj = props.getObject("chapter") ?: props.getObject("data")
+        throw Exception("No pages found. Ensure you have solved the Cloudflare check.")
     }
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
@@ -255,7 +298,6 @@ class TheBlank : HttpSource() {
         val started = Semaphore(0)
         val startupError = AtomicReference<Throwable?>()
 
-        // The Inertia Data Scraper
         val script = """
             (function () {
                 const appData = document.querySelector('div#app')?.getAttribute('data-page');
@@ -292,7 +334,7 @@ class TheBlank : HttpSource() {
                     databaseEnabled = true
                     loadWithOverviewMode = true
                     useWideViewPort = true
-                    blockNetworkImage = true // Speeds up loading by ignoring visual assets
+                    blockNetworkImage = true 
                     userAgentString = headers["User-Agent"]
                 }
 
@@ -311,7 +353,6 @@ class TheBlank : HttpSource() {
                         val requestUrl = request.url?.toString()?.toHttpUrlOrNull()
                             ?: return super.shouldInterceptRequest(view, request)
 
-                        // Block heavy assets to speed up execution
                         val path = requestUrl.encodedPath.lowercase()
                         if (path.endsWith(".jpg") || path.endsWith(".jpeg") || path.endsWith(".png") ||
                             path.endsWith(".webp") || path.endsWith(".gif") || path.endsWith(".mp4") ||
@@ -336,7 +377,7 @@ class TheBlank : HttpSource() {
                         if (!active.get() || payloadResult.payload != null) return
                         runCatching { view.evaluateJavascript(script, null) }
                         if (active.get() && payloadResult.payload == null) {
-                            handler.postDelayed(this, 100L) // Poll every 100ms
+                            handler.postDelayed(this, 100L)
                         }
                     }
                 }
