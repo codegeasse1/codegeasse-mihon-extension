@@ -8,6 +8,7 @@ import android.graphics.Canvas
 import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
+import android.view.View
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
@@ -2172,9 +2173,21 @@ class Comix :
             WebViewPayloadResult()
 
 
+        /*
+         * FIX:
+         *
+         * The previous version used:
+         *
+         *     ('a'..'z') + ('A'..'Z')
+         *
+         * which was interpreted by the Kotlin compiler as a
+         * collection literal in this build environment.
+         *
+         * A normal String works perfectly here because we only
+         * need to randomly select characters.
+         */
         val pool =
-            ('a'..'z') +
-                ('A'..'Z')
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
         val interfaceName =
@@ -3287,7 +3300,6 @@ object Descrambler {
     private const val NUM_TILES =
         GRID_COLS * GRID_ROWS
 
-
     private const val ENC_MULTIPLIER =
         1000005
 
@@ -3300,10 +3312,8 @@ object Descrambler {
     private const val LCG_INCREMENT =
         1013904223
 
-
     private val JPEG_MEDIA =
         "image/jpeg".toMediaType()
-
 
     val interceptor =
         Interceptor { chain ->
@@ -3313,11 +3323,9 @@ object Descrambler {
                     chain.request()
                 )
 
-
             if (!response.isSuccessful) {
                 return@Interceptor response
             }
-
 
             val rawScrambleSeed =
                 response.header(
@@ -3349,36 +3357,30 @@ object Descrambler {
                     "x-enc-algo"
                 )
 
-
             val encSeed =
                 rawEncSeed
                     ?.toLongOrNull()
                     ?.toInt()
-
 
             val encLen =
                 response
                     .header("x-enc-len")
                     ?.toIntOrNull()
 
-
             val scrambleSeed =
                 rawScrambleSeed
                     ?.toLongOrNull()
                     ?.toInt()
-
 
             val scrambleHash =
                 decodeScrambleHash(
                     rawScrambleHash
                 )
 
-
             val needsXor =
                 encSeed != null &&
                     encSeed != 0 &&
                     encLen != null
-
 
             val shouldDescrambleGrid =
                 rawScrambleGrid == "5x5" &&
@@ -3391,7 +3393,6 @@ object Descrambler {
                     scrambleSeed != null &&
                     scrambleSeed != 0
 
-
             if (
                 !needsXor &&
                 !shouldDescrambleGrid
@@ -3399,22 +3400,18 @@ object Descrambler {
                 return@Interceptor response
             }
 
-
             val body =
                 response.body
                     ?: return@Interceptor response
 
-
             val bodyMediaType =
                 body.contentType()
-
 
             /*
              * Read the network body once.
              */
             val originalBytes =
                 body.bytes()
-
 
             val bytes =
                 if (needsXor) {
@@ -3430,7 +3427,6 @@ object Descrambler {
 
                     originalBytes
                 }
-
 
             /*
              * ========================================================
@@ -3471,7 +3467,6 @@ object Descrambler {
                             bodyMediaType
                     }
 
-
                 return@Interceptor response
                     .newBuilder()
                     .removeHeader(
@@ -3491,7 +3486,6 @@ object Descrambler {
                     )
                     .build()
             }
-
 
             /*
              * Grid scrambling actually requires Bitmap processing.
@@ -3520,7 +3514,6 @@ object Descrambler {
                             )
                             .build()
 
-
                 val descrambled =
                     descramble(
                         bitmap,
@@ -3528,13 +3521,10 @@ object Descrambler {
                         rawScrambleAlgo,
                     )
 
-
                 bitmap.recycle()
-
 
                 val output =
                     Buffer()
-
 
                 /*
                  * 90 gives faster JPEG encoding while
@@ -3546,9 +3536,7 @@ object Descrambler {
                     output.outputStream(),
                 )
 
-
                 descrambled.recycle()
-
 
                 return@Interceptor response
                     .newBuilder()
@@ -3566,7 +3554,6 @@ object Descrambler {
                     )
                     .build()
             }
-
 
             /*
              * Fallback if XOR decoding produced something that
@@ -3608,7 +3595,6 @@ object Descrambler {
             )
         }
 
-
         val candidates =
             listOf(
 
@@ -3640,7 +3626,6 @@ object Descrambler {
                 ),
             )
 
-
         return candidates
             .firstOrNull {
                 it.hasImageSignature()
@@ -3659,10 +3644,8 @@ object Descrambler {
         val result =
             bytes.copyOf()
 
-
         var state =
             initialState
-
 
         val limit =
             minOf(
@@ -3670,14 +3653,12 @@ object Descrambler {
                 length,
             )
 
-
         for (i in 0 until limit) {
 
             state =
                 nextXorshiftState(
                     state
                 )
-
 
             val key =
                 if (highByte) {
@@ -3689,14 +3670,12 @@ object Descrambler {
                     state and 0xFF
                 }
 
-
             result[i] =
                 (
                     result[i].toInt()
                         xor key
                     ).toByte()
         }
-
 
         return result
     }
@@ -3711,10 +3690,8 @@ object Descrambler {
         val result =
             bytes.copyOf()
 
-
         var state =
             seed
-
 
         val limit =
             minOf(
@@ -3722,14 +3699,12 @@ object Descrambler {
                 length,
             )
 
-
         for (i in 0 until limit) {
 
             state =
                 state *
                     ENC_MULTIPLIER +
                     ENC_INCREMENT
-
 
             result[i] =
                 (
@@ -3739,7 +3714,6 @@ object Descrambler {
                             )
                     ).toByte()
         }
-
 
         return result
     }
@@ -3752,18 +3726,15 @@ object Descrambler {
         var next =
             state
 
-
         next =
             next xor (
                 next shl 13
                 )
 
-
         next =
             next xor (
                 next ushr 17
                 )
-
 
         return next xor (
             next shl 5
@@ -3857,13 +3828,11 @@ object Descrambler {
         val height =
             bitmap.height
 
-
         val tileW =
             width / GRID_COLS
 
         val tileH =
             height / GRID_ROWS
-
 
         val order =
             if (algo == "3") {
@@ -3881,7 +3850,6 @@ object Descrambler {
                 )
             }
 
-
         val output =
             Bitmap.createBitmap(
                 width,
@@ -3889,10 +3857,8 @@ object Descrambler {
                 Bitmap.Config.ARGB_8888,
             )
 
-
         val canvas =
             Canvas(output)
-
 
         canvas.drawBitmap(
             bitmap,
@@ -3900,7 +3866,6 @@ object Descrambler {
             0f,
             null,
         )
-
 
         for (
             dstIdx
@@ -3910,20 +3875,17 @@ object Descrambler {
             val srcIdx =
                 order[dstIdx]
 
-
             val srcCol =
                 srcIdx % GRID_COLS
 
             val srcRow =
                 srcIdx / GRID_COLS
 
-
             val dstCol =
                 dstIdx % GRID_COLS
 
             val dstRow =
                 dstIdx / GRID_COLS
-
 
             val srcRect =
                 Rect(
@@ -3933,7 +3895,6 @@ object Descrambler {
                     (srcRow + 1) * tileH,
                 )
 
-
             val dstRect =
                 Rect(
                     dstCol * tileW,
@@ -3942,7 +3903,6 @@ object Descrambler {
                     (dstRow + 1) * tileH,
                 )
 
-
             canvas.drawBitmap(
                 bitmap,
                 srcRect,
@@ -3950,7 +3910,6 @@ object Descrambler {
                 null,
             )
         }
-
 
         return output
     }
@@ -3966,10 +3925,8 @@ object Descrambler {
                 it
             }
 
-
         var state =
             seed or 1
-
 
         for (
             i in n - 1 downTo 1
@@ -3980,18 +3937,15 @@ object Descrambler {
                     state shl 13
                     )
 
-
             state =
                 state xor (
                     state ushr 17
                     )
 
-
             state =
                 state xor (
                     state shl 5
                     )
-
 
             val j =
                 (
@@ -4000,19 +3954,15 @@ object Descrambler {
                     ) %
                     (i + 1)
 
-
             val tmp =
                 arr[i]
-
 
             arr[i] =
                 arr[j.toInt()]
 
-
             arr[j.toInt()] =
                 tmp
         }
-
 
         return IntArray(n).also {
             inverse ->
@@ -4036,10 +3986,8 @@ object Descrambler {
                 it
             }
 
-
         var state =
             seed
-
 
         for (
             i in n - 1 downTo 1
@@ -4050,7 +3998,6 @@ object Descrambler {
                     LCG_MULTIPLIER +
                     LCG_INCREMENT
 
-
             val j =
                 (
                     state.toLong()
@@ -4058,19 +4005,15 @@ object Descrambler {
                     ) %
                     (i + 1)
 
-
             val tmp =
                 arr[i]
-
 
             arr[i] =
                 arr[j.toInt()]
 
-
             arr[j.toInt()] =
                 tmp
         }
-
 
         return IntArray(n).also {
             inverse ->
@@ -4119,7 +4062,6 @@ class Filters {
             val newest =
                 currentYear + 1
 
-
             val years =
                 (
                     newest downTo OLDEST_YEAR
@@ -4128,7 +4070,6 @@ class Filters {
                         it.toString() to
                             it.toString()
                     }
-
 
             val any =
                 "Any" to ""
@@ -4227,7 +4168,6 @@ class Filters {
                 return emptyList()
             }
 
-
             val ratings =
                 listOf(
                     "safe",
@@ -4236,12 +4176,10 @@ class Filters {
                     "pornographic",
                 )
 
-
             val index =
                 ratings.indexOf(
                     maxRating
                 )
-
 
             return if (
                 index == -1
@@ -4346,7 +4284,6 @@ class Filters {
         ),
         UriFilter {
 
-
         override fun addToUri(
             builder: HttpUrl.Builder,
         ) {
@@ -4382,7 +4319,6 @@ class Filters {
             },
         ),
         UriFilter {
-
 
         override fun addToUri(
             builder: HttpUrl.Builder,
@@ -4427,7 +4363,6 @@ class Filters {
         ),
         UriFilter {
 
-
         override fun addToUri(
             builder: HttpUrl.Builder,
         ) {
@@ -4441,7 +4376,6 @@ class Filters {
                             param,
                             s.value,
                         )
-
 
                     TriState.STATE_EXCLUDE ->
                         builder.addQueryParameter(
@@ -4489,7 +4423,6 @@ class Filters {
         ),
         UriFilter {
 
-
         override fun addToUri(
             builder: HttpUrl.Builder,
         ) {
@@ -4506,7 +4439,6 @@ class Filters {
                         it.value,
                     )
                 }
-
 
             state
                 .filter {
@@ -4644,7 +4576,6 @@ class Filters {
                         else -> ""
                     }
 
-
                 Filters
                     .getContentRatingsUpTo(
                         selected
@@ -4685,7 +4616,6 @@ class Filters {
                         ?: throw IllegalArgumentException(
                             "Minimum chapter length must be a positive integer greater than 0"
                         )
-
 
                 builder.addQueryParameter(
                     "min_chap",
@@ -4782,7 +4712,6 @@ class Filters {
         ),
         UriFilter {
 
-
         override fun addToUri(
             builder: HttpUrl.Builder,
         ) {
@@ -4793,7 +4722,6 @@ class Filters {
                     sortables[
                         state!!.index
                     ].value
-
 
                 val value =
                     if (
@@ -4806,7 +4734,6 @@ class Filters {
 
                         "desc"
                     }
-
 
                 builder.addQueryParameter(
                     "order[$query]",
@@ -4998,10 +4925,8 @@ class Manga(
                 return ""
             }
 
-
             val score =
                 ratedAvg.toBigDecimal()
-
 
             val stars =
                 score
@@ -5013,7 +4938,6 @@ class Manga(
                         RoundingMode.HALF_UP,
                     )
                     .toInt()
-
 
             val scoreString =
                 if (
@@ -5029,13 +4953,11 @@ class Manga(
                         .toPlainString()
                 }
 
-
             return buildString {
 
                 append(
                     "★".repeat(stars)
                 )
-
 
                 if (
                     stars < 5
@@ -5047,7 +4969,6 @@ class Manga(
                         )
                     )
                 }
-
 
                 append(
                     " $scoreString"
@@ -5220,6 +5141,17 @@ class Manga(
                 }
 
 
+            /*
+             * FIX:
+             *
+             * The previous version had an extra closing brace here.
+             * That closed SManga.create().apply { ... } before the
+             * remaining properties were assigned, causing:
+             *
+             *     Syntax error: Expecting a top level declaration
+             *
+             * Keep the apply block open until after genre.
+             */
             initialized =
                 true
 
