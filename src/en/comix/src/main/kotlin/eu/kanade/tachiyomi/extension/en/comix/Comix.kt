@@ -1480,12 +1480,12 @@ class Comix :
                                                     [
                                                         button
                                                             .getAttribute(
-                                                                'aria-label'
+                                                            'aria-label'
                                                             ),
 
                                                         button
                                                             .getAttribute(
-                                                                'title'
+                                                            'title'
                                                             ),
 
                                                         button.textContent
@@ -5365,7 +5365,6 @@ class Manga(
             .distinct()
             .joinToString()
     }
-}
 
 
 @Serializable
