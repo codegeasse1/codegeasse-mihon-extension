@@ -1,15 +1,15 @@
 package eu.kanade.tachiyomi.extension.en.theblank
 
-import android.app.Application
 import android.content.SharedPreferences
 import android.util.Base64
 import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreferenceCompat
 
-// Your custom Codegeasse cryptography imports!
+// Your custom Codegeasse utilities!
 import codegeasse.crypto.SecretStream
 import codegeasse.crypto.SecretStream.State
 import codegeasse.crypto.X25519
+import codegeasse.utils.getPreferencesLazy
 
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
@@ -39,8 +39,6 @@ import okhttp3.ResponseBody.Companion.asResponseBody
 import okio.Buffer
 import okio.Timeout
 import okio.buffer
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import java.io.IOException
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -67,9 +65,8 @@ class TheBlank : HttpSource(), ConfigurableSource {
         isLenient = true
     }
 
-    private val preferences: SharedPreferences by lazy {
-        Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
-    }
+    // Safely routes through your utility just like Keiyoushi
+    private val preferences by getPreferencesLazy()
 
     override val client = network.client.newBuilder()
         .addInterceptor(::imageInterceptor)
@@ -400,8 +397,6 @@ class TheBlank : HttpSource(), ConfigurableSource {
 
         val decryptedSource = object : okio.Source {
             private val secretStream = SecretStream()
-            
-            // Uses your correctly imported SecretStream.State
             private val state = State().apply {
                 secretStream.initPull(this, ssHeader, streamKey)
             }
@@ -453,6 +448,7 @@ class TheBlank : HttpSource(), ConfigurableSource {
         }.also(screen::addPreference)
     }
 
+    // Restored the missing `class` keyword here to fix the build failure
     class TriStateFilter(name: String, val value: String) : Filter.TriState(name)
     class CheckBoxFilter(name: String, val value: String) : Filter.CheckBox(name)
 
