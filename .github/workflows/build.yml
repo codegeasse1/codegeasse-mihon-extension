@@ -9,6 +9,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -33,9 +36,214 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y imagemagick webp
 
+      - name: Auto-Scaffold New Extensions
+        run: |
+          python3 << 'PY'
+          import os
+          from pathlib import Path
+
+          GRADLE_TEMPLATE = """plugins {
+              id("com.android.application")
+              id("kotlin-android")
+              kotlin("plugin.serialization") version "1.9.0"
+          }
+
+          // --- Extension metadata -----------------------------------------------
+          val extName = "%%EXT_NAME%%"
+          val extClass = "%%EXT_CLASS%%"
+          val extVersionCode = 1
+          val isNsfw = false
+          // ----------------------------------------------------------------------
+
+          val libVersion = (project.findProperty("libVersion") as String?) ?: "1.6.0"
+          val libApiVersion = "1.4"
+
+          android {
+              namespace = "%%PKG_NAME%%"
+              compileSdk = 34
+
+              defaultConfig {
+                  applicationId = "%%PKG_NAME%%"
+                  minSdk = 21
+                  targetSdk = 34
+                  versionCode = extVersionCode
+                  versionName = "$libApiVersion.$extVersionCode"
+
+                  manifestPlaceholders["appName"] = "Tachiyomi: $extName"
+                  manifestPlaceholders["extClass"] = extClass
+                  manifestPlaceholders["nsfw"] = if (isNsfw) 2 else 0
+                  manifestPlaceholders["libVersion"] = libApiVersion
+              }
+
+              buildTypes {
+                  getByName("release") {
+                      isMinifyEnabled = false
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+
+              applicationVariants.all {
+                  val variant = this
+                  variant.outputs.all {
+                      val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
+                      val lang = "%%LANG%%"
+                      output.outputFileName = "tachiyomi-${lang}.${project.name}-v${variant.versionName}.apk"
+                  }
+              }
+          }
+
+          kotlin {
+              compilerOptions {
+                  jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+              }
+          }
+
+          dependencies {
+              compileOnly("com.github.mihonapp:tachiyomix:$libVersion")
+              compileOnly("com.squareup.okhttp3:okhttp:4.12.0")
+              compileOnly("com.squareup.okio:okio:3.9.0")
+              compileOnly("org.jsoup:jsoup:1.17.2")
+              compileOnly("com.google.code.gson:gson:2.10.1")
+              implementation(kotlin("stdlib"))
+              implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+              implementation(project(":lib:codegeasse-utils"))
+          }
+          """
+
+          MANIFEST_TEMPLATE = """<?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-sdk
+                  android:minSdkVersion="21"
+                  android:targetSdkVersion="34" />
+
+              <uses-feature android:name="tachiyomi.extension" />
+
+              <application
+                  android:allowBackup="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:label="${appName}"
+                  android:roundIcon="@mipmap/ic_launcher"
+                  android:supportsRtl="true">
+
+                  <meta-data android:name="tachiyomix.name" android:value="${appName}" />
+                  <meta-data android:name="tachiyomix.contentWarning" android:value="${nsfw}" />
+                  <meta-data android:name="tachiyomix.extensionLib" android:value="${libVersion}" />
+                  <meta-data android:name="tachiyomi.extension.class" android:value="${extClass}" />
+
+                  <meta-data android:name="tachiyomi.extension.name" android:value="${appName}" />
+                  <meta-data android:name="tachiyomi.extension.nsfw" android:value="${nsfw}" />
+                  <meta-data android:name="tachiyomi.extension.lib" android:value="${libVersion}" />
+
+              </application>
+
+          </manifest>
+          """
+
+          KT_TEMPLATE = """package %%PKG_NAME%%
+
+          import eu.kanade.tachiyomi.source.model.*
+          import eu.kanade.tachiyomi.source.online.HttpSource
+          import okhttp3.Request
+          import okhttp3.Response
+          import rx.Observable
+
+          class %%EXT_CLASS_NAME%% : HttpSource() {
+
+              override val name = "%%EXT_NAME%%"
+              override val baseUrl = "https://example.com"
+              override val lang = "%%LANG%%"
+              override val supportsLatest = false
+
+              override fun popularMangaRequest(page: Int): Request = throw UnsupportedOperationException("Not used")
+              override fun popularMangaParse(response: Response): MangasPage = throw UnsupportedOperationException("Not used")
+              
+              override fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException("Not used")
+              override fun latestUpdatesParse(response: Response): MangasPage = throw UnsupportedOperationException("Not used")
+              
+              override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request = throw UnsupportedOperationException("Not used")
+              override fun searchMangaParse(response: Response): MangasPage = throw UnsupportedOperationException("Not used")
+              
+              override fun mangaDetailsParse(response: Response): SManga = throw UnsupportedOperationException("Not used")
+              override fun chapterListParse(response: Response): List<SChapter> = throw UnsupportedOperationException("Not used")
+              override fun pageListParse(response: Response): List<Page> = throw UnsupportedOperationException("Not used")
+              override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException("Not used")
+          }
+          """
+
+          src_dir = Path("src")
+          if not src_dir.exists():
+              exit(0)
+
+          made_changes = False
+
+          for lang_dir in src_dir.iterdir():
+              if not lang_dir.is_dir(): continue
+              lang = lang_dir.name
+
+              for ext_dir in lang_dir.iterdir():
+                  if not ext_dir.is_dir(): continue
+                  ext_slug = ext_dir.name
+
+                  build_kts = ext_dir / "build.gradle.kts"
+                  build_gradle = ext_dir / "build.gradle"
+
+                  if build_kts.exists() or build_gradle.exists():
+                      continue
+
+                  print(f"Scaffolding new extension: {ext_slug} ({lang})")
+                  made_changes = True
+
+                  ext_name = ext_slug.replace("-", " ").title()
+                  ext_class_name = ext_slug.replace("-", "").title()
+                  ext_class = f".{ext_class_name}"
+                  pkg_suffix = ext_slug.replace("-", "")
+                  pkg_name = f"eu.kanade.tachiyomi.extension.{lang}.{pkg_suffix}"
+
+                  # 1. Create build.gradle.kts
+                  gradle_content = GRADLE_TEMPLATE.replace("%%EXT_NAME%%", ext_name).replace("%%EXT_CLASS%%", ext_class).replace("%%PKG_NAME%%", pkg_name).replace("%%LANG%%", lang)
+                  build_kts.write_text(gradle_content)
+
+                  # 2. Create AndroidManifest.xml
+                  manifest_dir = ext_dir / "src" / "main"
+                  manifest_dir.mkdir(parents=True, exist_ok=True)
+                  manifest = manifest_dir / "AndroidManifest.xml"
+                  manifest.write_text(MANIFEST_TEMPLATE)
+
+                  # 3. Create Kotlin Source Directory and Base File
+                  kt_dir = manifest_dir / "kotlin" / "eu" / "kanade" / "tachiyomi" / "extension" / lang / pkg_suffix
+                  kt_dir.mkdir(parents=True, exist_ok=True)
+                  
+                  kt_content = KT_TEMPLATE.replace("%%EXT_NAME%%", ext_name).replace("%%EXT_CLASS_NAME%%", ext_class_name).replace("%%PKG_NAME%%", pkg_name).replace("%%LANG%%", lang)
+                  kt_file = kt_dir / f"{ext_class_name}.kt"
+                  kt_file.write_text(kt_content)
+
+                  # 4. Create Res Directory & gitkeep for icons
+                  res_dir = manifest_dir / "res" / "mipmap-xxxhdpi"
+                  res_dir.mkdir(parents=True, exist_ok=True)
+                  (res_dir / ".gitkeep").touch()
+
+          if made_changes:
+              with open(os.environ["GITHUB_ENV"], "a") as f:
+                  f.write("SCAFFOLDED=true\n")
+          PY
+
+      - name: Commit scaffolded files back to repository
+        if: env.SCAFFOLDED == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/
+          git commit -m "Auto-scaffold missing extension directories [skip ci]" || echo "No changes to commit"
+          git push
+
       - name: Normalize source icons before debug build
         run: |
-          python3 << "PY"
+          python3 << 'PY'
           import os
           import shutil
           import subprocess
@@ -112,7 +320,6 @@ jobs:
                   for pattern in ["mipmap-*", "mipmap", "drawable-*", "drawable"]:
                       search_dirs.extend(sorted(res_dir.glob(pattern)))
 
-              # 1. Prefer standard icon names in res folders
               for directory in search_dirs:
                   if not directory.is_dir():
                       continue
@@ -123,13 +330,11 @@ jobs:
                           if candidate.exists():
                               return candidate
 
-              # 2. Any image inside mipmap/drawable folders
               if res_dir.exists():
                   for p in sorted(res_dir.rglob("*")):
                       if p.is_file() and p.suffix.lower() in IMAGE_EXTS:
                           return p
 
-              # 3. Final fallback: any image anywhere inside extension folder
               for p in sorted(ext_dir.rglob("*")):
                   if not p.is_file():
                       continue
@@ -209,7 +414,7 @@ jobs:
 
       - name: Normalize source icons before release build
         run: |
-          python3 << "PY"
+          python3 << 'PY'
           import os
           import shutil
           import subprocess
@@ -353,7 +558,7 @@ jobs:
           KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
-          python3 << "PY"
+          python3 << 'PY'
           import os
           import re
           import subprocess
@@ -399,7 +604,7 @@ jobs:
 
       - name: Prepare repo files
         run: |
-          python3 << "PY"
+          python3 << 'PY'
           import os
           import re
           import json
@@ -700,17 +905,6 @@ jobs:
 
           print("")
           print(f"DONE: generated {len(index)} extension entries")
-          print("")
-          print("=== repo files ===")
-          for p in sorted(repo_dir.rglob("*")):
-              if p.is_file():
-                  print(p)
-          print("")
-          print("=== index.min.json ===")
-          print((repo_dir / "index.min.json").read_text(encoding="utf-8"))
-          print("")
-          print("=== repo.json ===")
-          print((repo_dir / "repo.json").read_text(encoding="utf-8"))
 
           PY
 
