@@ -66,6 +66,9 @@ dependencies {
     compileOnly("com.google.code.gson:gson:2.10.1")
     implementation(kotlin("stdlib"))
     
-    // Pulls in your custom Codegeasse tools
+    // Required for Pam JSON DTO parsing
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+    
+    // Pulls in your custom Codegeasse crypto tools
     implementation(project(":lib:codegeasse-utils"))
 }
