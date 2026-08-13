@@ -6,7 +6,7 @@ import android.util.Base64
 import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreferenceCompat
 
-// Your custom Codegeasse cryptography imports!
+
 import codegeasse.crypto.SecretStream
 import codegeasse.crypto.SecretStream.State
 import codegeasse.crypto.X25519
@@ -453,8 +453,8 @@ class TheBlank : HttpSource(), ConfigurableSource {
         }.also(screen::addPreference)
     }
 
-    private class TriStateFilter(name: String, val value: String) : Filter.TriState(name)
-    private class CheckBoxFilter(name: String, val value: String) : Filter.CheckBox(name)
+    class TriStateFilter(name: String, val value: String) : Filter.TriState(name)
+    CheckBoxFilter(name: String, val value: String) : Filter.CheckBox(name)
 
     private class GenreFilter : TriStateGroupFilter("Genres", genres)
     private class TypeFilter : TriStateGroupFilter("Types", type)
