@@ -5,7 +5,7 @@ import android.util.Base64
 import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreferenceCompat
 
-// Your custom Codegeasse cryptography imports!
+// Custom Codegeasse Cryptography Imports
 import codegeasse.crypto.SecretStream
 import codegeasse.crypto.SecretStream.State
 import codegeasse.crypto.X25519
@@ -68,12 +68,13 @@ class TheBlank : HttpSource(), ConfigurableSource {
 
     override val client = network.client.newBuilder()
         .addInterceptor(::imageInterceptor)
-        .rateLimit(1, 2, TimeUnit.SECONDS)
+        .rateLimit(2) // 2 requests per second for API metadata
         .build()
 
     override fun headersBuilder() = super.headersBuilder()
         .set("Origin", "https://${baseHttpUrl.host}")
         .set("Referer", "$baseUrl/")
+        .set("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Mobile Safari/537.36")
 
     private var version: String? = null
     private var csrfToken: String? = null
@@ -189,8 +190,10 @@ class TheBlank : HttpSource(), ConfigurableSource {
     }
 
     // ============================== Manga Details ==============================
-    override fun mangaDetailsRequest(manga: SManga): Request = apiRequest("$baseUrl/serie/${manga.url}".toHttpUrl(), includeXSRFToken = true, includeCSRFToken = false, includeVersion = true)
-    override fun getMangaUrl(manga: SManga): String = "$baseUrl/serie/${manga.url}"
+    override fun mangaDetailsRequest(manga: SManga): Request = apiRequest("$baseUrl/serie/${manga.url.removePrefix("/serie/").removePrefix("/")}".toHttpUrl(), includeXSRFToken = true, includeCSRFToken = false, includeVersion = true)
+    
+    // Fixes the ERR_NAME_NOT_RESOLVED issue on Webview!
+    override fun getMangaUrl(manga: SManga): String = "$baseUrl/serie/${manga.url.removePrefix("/serie/").removePrefix("/")}"
 
     override fun mangaDetailsParse(response: Response): SManga {
         val data = json.decodeFromString<MangaResponse>(response.body!!.string()).props.serie
@@ -230,7 +233,6 @@ class TheBlank : HttpSource(), ConfigurableSource {
     override fun chapterListParse(response: Response): List<SChapter> {
         val data = json.decodeFromString<MangaResponse>(response.body!!.string()).props.serie
         
-        // This impenetrable try/catch prevents the InjektionException from crashing Tadami
         val hidePremium = try {
             Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000).getBoolean(HIDE_PREMIUM_PREF, false)
         } catch (e: Exception) {
@@ -412,13 +414,14 @@ class TheBlank : HttpSource(), ConfigurableSource {
                 if (decryptedBuffer.size == 0L) {
                     if (isFinished) return -1
 
-                    networkSource.request(CHUNK_SIZE.toLong())
-                    val chunkSize = minOf(CHUNK_SIZE.toLong(), networkSource.buffer.size)
-
-                    if (chunkSize == 0L) {
+                    // FIX: Request 1 byte instead of CHUNK_SIZE to prevent socket timeouts!
+                    networkSource.request(1)
+                    if (networkSource.buffer.size == 0L) {
                         isFinished = true
                         return -1
                     }
+
+                    val chunkSize = minOf(CHUNK_SIZE.toLong(), networkSource.buffer.size)
 
                     val encryptedData = Buffer().apply { networkSource.read(this, chunkSize) }.readByteArray()
                     val result = secretStream.pull(state, encryptedData, encryptedData.size) ?: throw IOException("Decryption failed")
@@ -452,7 +455,7 @@ class TheBlank : HttpSource(), ConfigurableSource {
                 setDefaultValue(false)
             }.also(screen::addPreference)
         } catch (e: Exception) {
-            // Fails safely on Mangayomi/Tadami if Application is not injected
+            // Failsafe for Mangayomi/Tadami
         }
     }
 
