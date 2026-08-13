@@ -5,7 +5,6 @@ import android.util.Base64
 import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreferenceCompat
 
-// Custom Codegeasse Cryptography Imports
 import codegeasse.crypto.SecretStream
 import codegeasse.crypto.SecretStream.State
 import codegeasse.crypto.X25519
@@ -36,6 +35,8 @@ import okhttp3.RequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.asResponseBody
 import okio.Buffer
+import okio.Timeout
+import okio.buffer
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.IOException
@@ -69,10 +70,10 @@ class TheBlank : HttpSource(), ConfigurableSource {
         .rateLimit(1, 2, TimeUnit.SECONDS)
         .build()
 
+    // STRICT KEIYOUSHI HEADERS - NO USER AGENT OVERRIDES!
     override fun headersBuilder() = super.headersBuilder()
         .set("Origin", "https://${baseHttpUrl.host}")
         .set("Referer", "$baseUrl/")
-        .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36")
 
     private var version: String? = null
     private var csrfToken: String? = null
@@ -188,6 +189,7 @@ class TheBlank : HttpSource(), ConfigurableSource {
     }
 
     // ============================== Manga Details ==============================
+    // STRICT KEIYOUSHI URL BUILDER
     override fun mangaDetailsRequest(manga: SManga): Request {
         val url = "$baseUrl/serie/${manga.url}".toHttpUrl()
         return apiRequest(url, includeXSRFToken = true, includeCSRFToken = false, includeVersion = true)
@@ -233,6 +235,7 @@ class TheBlank : HttpSource(), ConfigurableSource {
     override fun chapterListParse(response: Response): List<SChapter> {
         val data = json.decodeFromString<MangaResponse>(response.body!!.string()).props.serie
         
+        // SAFE INJEKT HANDLER FOR TADAMI/MANGAYOMI
         val hidePremium = try {
             Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000).getBoolean(HIDE_PREMIUM_PREF, false)
         } catch (e: Exception) {
@@ -374,6 +377,7 @@ class TheBlank : HttpSource(), ConfigurableSource {
         return GET(url, h)
     }
 
+    // STRICT KEIYOUSHI IMAGE INTERCEPTOR - NO BUFFER HACKS
     private fun imageInterceptor(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val response = chain.proceed(request)
@@ -397,40 +401,54 @@ class TheBlank : HttpSource(), ConfigurableSource {
             ByteArray(32) { i -> (sha[i].toInt() xor keyHint[i].toInt()).toByte() }
         }
 
-        // FIX: Load the entire encrypted image into memory first.
-        // This prevents OkHttp from timing out (25-30 seconds) while waiting for partial chunked socket streams.
-        val encryptedBytes = response.body!!.bytes()
-        
-        if (encryptedBytes.size <= PREFIX_LENGTH + STREAM_HEADER_LENGTH) {
-            return response
-        }
+        val networkSource = response.body!!.source()
+        networkSource.skip(PREFIX_LENGTH.toLong())
+        val ssHeader = networkSource.readByteArray(STREAM_HEADER_LENGTH.toLong())
 
-        val ssHeader = encryptedBytes.copyOfRange(PREFIX_LENGTH, PREFIX_LENGTH + STREAM_HEADER_LENGTH)
-        val payloadBytes = encryptedBytes.copyOfRange(PREFIX_LENGTH + STREAM_HEADER_LENGTH, encryptedBytes.size)
-
-        val secretStream = SecretStream()
-        val state = State().apply {
-            secretStream.initPull(this, ssHeader, streamKey)
-        }
-        
-        val decryptedBuffer = Buffer()
-        var offset = 0
-
-        while (offset < payloadBytes.size) {
-            val chunkLength = minOf(CHUNK_SIZE, payloadBytes.size - offset)
-            val chunk = payloadBytes.copyOfRange(offset, offset + chunkLength)
-            
-            val result = secretStream.pull(state, chunk, chunk.size) ?: throw IOException("Decryption failed")
-            decryptedBuffer.write(result.message)
-            
-            if (result.tag.toInt() == SecretStream.TAG_FINAL) {
-                break
+        val decryptedSource = object : okio.Source {
+            private val secretStream = SecretStream()
+            private val state = State().apply {
+                secretStream.initPull(this, ssHeader, streamKey)
             }
-            offset += chunkLength
-        }
+            private val decryptedBuffer = Buffer()
+            private var isFinished = false
+
+            override fun read(sink: Buffer, byteCount: Long): Long {
+                if (decryptedBuffer.size == 0L) {
+                    if (isFinished) return -1
+
+                    networkSource.request(CHUNK_SIZE.toLong())
+
+                    val chunkSize = minOf(CHUNK_SIZE.toLong(), networkSource.buffer.size)
+
+                    if (chunkSize == 0L) {
+                        isFinished = true
+                        return -1
+                    }
+
+                    val encryptedData = Buffer().apply {
+                        networkSource.read(this, chunkSize)
+                    }.readByteArray()
+
+                    val result = secretStream.pull(state, encryptedData, encryptedData.size)
+                        ?: throw IOException("Decryption failed")
+
+                    decryptedBuffer.write(result.message)
+
+                    if (result.tag.toInt() == SecretStream.TAG_FINAL) {
+                        isFinished = true
+                    }
+                }
+
+                return decryptedBuffer.read(sink, byteCount)
+            }
+
+            override fun timeout(): Timeout = networkSource.timeout()
+            override fun close() = networkSource.close()
+        }.buffer()
 
         return response.newBuilder()
-            .body(decryptedBuffer.asResponseBody("image/jpg".toMediaType()))
+            .body(decryptedSource.asResponseBody("image/jpg".toMediaType()))
             .build()
     }
 
