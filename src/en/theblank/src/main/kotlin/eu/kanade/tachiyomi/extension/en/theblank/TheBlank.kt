@@ -1,15 +1,14 @@
 package eu.kanade.tachiyomi.extension.en.theblank
 
-import android.content.SharedPreferences
+import android.app.Application
 import android.util.Base64
 import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreferenceCompat
 
-// Your custom Codegeasse utilities!
+// Your custom Codegeasse cryptography imports!
 import codegeasse.crypto.SecretStream
 import codegeasse.crypto.SecretStream.State
 import codegeasse.crypto.X25519
-import codegeasse.utils.getPreferencesLazy
 
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
@@ -39,6 +38,8 @@ import okhttp3.ResponseBody.Companion.asResponseBody
 import okio.Buffer
 import okio.Timeout
 import okio.buffer
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.io.IOException
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -64,9 +65,6 @@ class TheBlank : HttpSource(), ConfigurableSource {
         ignoreUnknownKeys = true
         isLenient = true
     }
-
-    // Safely routes through your utility just like Keiyoushi
-    private val preferences by getPreferencesLazy()
 
     override val client = network.client.newBuilder()
         .addInterceptor(::imageInterceptor)
@@ -231,7 +229,13 @@ class TheBlank : HttpSource(), ConfigurableSource {
 
     override fun chapterListParse(response: Response): List<SChapter> {
         val data = json.decodeFromString<MangaResponse>(response.body!!.string()).props.serie
-        val hidePremium = preferences.getBoolean(HIDE_PREMIUM_PREF, false)
+        
+        // This impenetrable try/catch prevents the InjektionException from crashing Tadami
+        val hidePremium = try {
+            Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000).getBoolean(HIDE_PREMIUM_PREF, false)
+        } catch (e: Exception) {
+            false
+        }
 
         return data.chapters
             .filter { !(it.isPremium && hidePremium) }
@@ -441,14 +445,17 @@ class TheBlank : HttpSource(), ConfigurableSource {
 
     // ============================== Settings & Filters ==============================
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        SwitchPreferenceCompat(screen.context).apply {
-            key = HIDE_PREMIUM_PREF
-            title = prefPremiumTitle
-            setDefaultValue(false)
-        }.also(screen::addPreference)
+        try {
+            SwitchPreferenceCompat(screen.context).apply {
+                key = HIDE_PREMIUM_PREF
+                title = prefPremiumTitle
+                setDefaultValue(false)
+            }.also(screen::addPreference)
+        } catch (e: Exception) {
+            // Fails safely on Mangayomi/Tadami if Application is not injected
+        }
     }
 
-    // Restored the missing `class` keyword here to fix the build failure
     class TriStateFilter(name: String, val value: String) : Filter.TriState(name)
     class CheckBoxFilter(name: String, val value: String) : Filter.CheckBox(name)
 
