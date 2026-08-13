@@ -36,8 +36,6 @@ import okhttp3.RequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.asResponseBody
 import okio.Buffer
-import okio.Timeout
-import okio.buffer
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.IOException
@@ -68,13 +66,13 @@ class TheBlank : HttpSource(), ConfigurableSource {
 
     override val client = network.client.newBuilder()
         .addInterceptor(::imageInterceptor)
-        .rateLimit(2) // 2 requests per second for API metadata
+        .rateLimit(1, 2, TimeUnit.SECONDS)
         .build()
 
     override fun headersBuilder() = super.headersBuilder()
         .set("Origin", "https://${baseHttpUrl.host}")
         .set("Referer", "$baseUrl/")
-        .set("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Mobile Safari/537.36")
+        .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36")
 
     private var version: String? = null
     private var csrfToken: String? = null
@@ -190,10 +188,12 @@ class TheBlank : HttpSource(), ConfigurableSource {
     }
 
     // ============================== Manga Details ==============================
-    override fun mangaDetailsRequest(manga: SManga): Request = apiRequest("$baseUrl/serie/${manga.url.removePrefix("/serie/").removePrefix("/")}".toHttpUrl(), includeXSRFToken = true, includeCSRFToken = false, includeVersion = true)
+    override fun mangaDetailsRequest(manga: SManga): Request {
+        val url = "$baseUrl/serie/${manga.url}".toHttpUrl()
+        return apiRequest(url, includeXSRFToken = true, includeCSRFToken = false, includeVersion = true)
+    }
     
-    // Fixes the ERR_NAME_NOT_RESOLVED issue on Webview!
-    override fun getMangaUrl(manga: SManga): String = "$baseUrl/serie/${manga.url.removePrefix("/serie/").removePrefix("/")}"
+    override fun getMangaUrl(manga: SManga): String = "$baseUrl/serie/${manga.url}"
 
     override fun mangaDetailsParse(response: Response): SManga {
         val data = json.decodeFromString<MangaResponse>(response.body!!.string()).props.serie
@@ -397,50 +397,40 @@ class TheBlank : HttpSource(), ConfigurableSource {
             ByteArray(32) { i -> (sha[i].toInt() xor keyHint[i].toInt()).toByte() }
         }
 
-        val networkSource = response.body!!.source()
-        networkSource.skip(PREFIX_LENGTH.toLong())
-        val ssHeader = networkSource.readByteArray(STREAM_HEADER_LENGTH.toLong())
+        // FIX: Load the entire encrypted image into memory first.
+        // This prevents OkHttp from timing out (25-30 seconds) while waiting for partial chunked socket streams.
+        val encryptedBytes = response.body!!.bytes()
+        
+        if (encryptedBytes.size <= PREFIX_LENGTH + STREAM_HEADER_LENGTH) {
+            return response
+        }
 
-        val decryptedSource = object : okio.Source {
-            private val secretStream = SecretStream()
-            private val state = State().apply {
-                secretStream.initPull(this, ssHeader, streamKey)
-            }
+        val ssHeader = encryptedBytes.copyOfRange(PREFIX_LENGTH, PREFIX_LENGTH + STREAM_HEADER_LENGTH)
+        val payloadBytes = encryptedBytes.copyOfRange(PREFIX_LENGTH + STREAM_HEADER_LENGTH, encryptedBytes.size)
+
+        val secretStream = SecretStream()
+        val state = State().apply {
+            secretStream.initPull(this, ssHeader, streamKey)
+        }
+        
+        val decryptedBuffer = Buffer()
+        var offset = 0
+
+        while (offset < payloadBytes.size) {
+            val chunkLength = minOf(CHUNK_SIZE, payloadBytes.size - offset)
+            val chunk = payloadBytes.copyOfRange(offset, offset + chunkLength)
             
-            private val decryptedBuffer = Buffer()
-            private var isFinished = false
-
-            override fun read(sink: Buffer, byteCount: Long): Long {
-                if (decryptedBuffer.size == 0L) {
-                    if (isFinished) return -1
-
-                    // FIX: Request 1 byte instead of CHUNK_SIZE to prevent socket timeouts!
-                    networkSource.request(1)
-                    if (networkSource.buffer.size == 0L) {
-                        isFinished = true
-                        return -1
-                    }
-
-                    val chunkSize = minOf(CHUNK_SIZE.toLong(), networkSource.buffer.size)
-
-                    val encryptedData = Buffer().apply { networkSource.read(this, chunkSize) }.readByteArray()
-                    val result = secretStream.pull(state, encryptedData, encryptedData.size) ?: throw IOException("Decryption failed")
-
-                    decryptedBuffer.write(result.message)
-
-                    if (result.tag.toInt() == SecretStream.TAG_FINAL) {
-                        isFinished = true
-                    }
-                }
-                return decryptedBuffer.read(sink, byteCount)
+            val result = secretStream.pull(state, chunk, chunk.size) ?: throw IOException("Decryption failed")
+            decryptedBuffer.write(result.message)
+            
+            if (result.tag.toInt() == SecretStream.TAG_FINAL) {
+                break
             }
-
-            override fun timeout(): Timeout = networkSource.timeout()
-            override fun close() = networkSource.close()
-        }.buffer()
+            offset += chunkLength
+        }
 
         return response.newBuilder()
-            .body(decryptedSource.asResponseBody("image/jpg".toMediaType()))
+            .body(decryptedBuffer.asResponseBody("image/jpg".toMediaType()))
             .build()
     }
 
