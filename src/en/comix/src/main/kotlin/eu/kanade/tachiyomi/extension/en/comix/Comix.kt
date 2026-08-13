@@ -740,7 +740,7 @@ class Comix :
 
                 initialData
                     .parseAs<JsonObject>()
-                    ["queries"] as? JsonObject
+                    .get("queries") as? JsonObject
 
             }.getOrNull()
                 ?: return null
@@ -1328,7 +1328,7 @@ class Comix :
 
 
             val queries =
-                root["queries"] as? JsonObject
+                root.get("queries") as? JsonObject
                     ?: throw Exception(
                         "Could not find queries in manga data"
                     )
