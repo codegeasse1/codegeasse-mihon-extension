@@ -399,6 +399,12 @@ class Yurivan : HttpSource() {
         thumbnail_url = cover_url
     }
 
+    private fun StoryDto.toSManga() = SManga.create().apply {
+        url = id
+        title = title
+        thumbnail_url = cover_url
+    }
+
     private fun StoryDto.originalCreatorString(): String? {
 
         val el = original_creator ?: return null
@@ -462,6 +468,13 @@ class Yurivan : HttpSource() {
         if (tags.isNotEmpty()) {
             append("Tags: ", tags.joinToString(", "))
         }
+    }
+
+    private val chapterDateFormat = SimpleDateFormat(
+        "yyyy-MM-dd'T'HH:mm:ss",
+        Locale.ROOT,
+    ).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
     }
 
     private fun String.chapterEpochMillis(): Long =
