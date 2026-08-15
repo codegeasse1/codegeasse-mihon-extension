@@ -155,7 +155,7 @@ class Yurivan : HttpSource() {
         Filter.Header("Text search matches titles. Filters apply in every mode."),
         Filter.Separator(),
         SortFilter("Sort", sortOptions),
-        TypeFilter(),
+        TypeFilter(typeOptions),
         TagFilter("Tags", tagOptions),
     )
 
@@ -366,7 +366,8 @@ class Yurivan : HttpSource() {
                     .decodeFromString<List<VideoChapterDto>>(body)
                     .firstOrNull()
 
-                val thumb = data?.thumbnailUrl()
+                val thumb = data?.bunny_thumbnail_url
+                    ?: data?.cover_object_key?.let { absoluteImageUrl(it) }
                     ?: return emptyList()
 
                 listOf(Page(0, url = thumb, imageUrl = thumb))
@@ -629,11 +630,12 @@ class Yurivan : HttpSource() {
             get() = options[state?.index ?: 0].second
     }
 
-    private class TypeFilter :
-        Filter.Select(
-            "Type",
-            typeOptions.map { it.first }.toTypedArray(),
-        )
+    private class TypeFilter(
+        options: List<Pair<String, String>>,
+    ) : Filter.Select(
+        "Type",
+        options.map { it.first }.toTypedArray(),
+    )
 
     private class TriStateFilter(
         name: String,
@@ -753,11 +755,7 @@ class Yurivan : HttpSource() {
         val bunny_thumbnail_url: String? = null,
         val cover_object_key: String? = null,
         val duration_seconds: Double? = null,
-    ) {
-        fun thumbnailUrl(): String? =
-            bunny_thumbnail_url
-                ?: cover_object_key?.let { absoluteImageUrl(it) }
-    }
+    )
 
 
     companion object {
