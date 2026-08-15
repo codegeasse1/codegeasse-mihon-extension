@@ -632,7 +632,7 @@ class Yurivan : HttpSource() {
 
     private class TypeFilter(
         options: List<Pair<String, String>>,
-    ) : Filter.Select(
+    ) : Filter.Select<String>(
         "Type",
         options.map { it.first }.toTypedArray(),
     )
