@@ -175,7 +175,7 @@ class LunarX : HttpSource(), ConfigurableSource {
         return GET(url.toString(), apiHeaders())
     }
 
-    private fun searchMangaParse(response: Response): MangasPage {
+    override fun searchMangaParse(response: Response): MangasPage {
 
         val root = json.parseToJsonElement(response.body!!.string()).jsonObject
         val items = root["manga"] as? JsonArray ?: return MangasPage(emptyList(), false)
