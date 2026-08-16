@@ -75,6 +75,7 @@ class Yurivan : HttpSource() {
     private fun supabaseGet(
         table: String,
         params: Map<String, String>,
+        type: String? = null,
     ): Request {
 
         val url = apiUrl.toHttpUrl().newBuilder().apply {
@@ -84,7 +85,15 @@ class Yurivan : HttpSource() {
             }
         }.build()
 
-        return GET(url, apiHeaders)
+        val headers = if (type != null) {
+            apiHeaders.newBuilder()
+                .set("X-Yurivan-Type", type)
+                .build()
+        } else {
+            apiHeaders
+        }
+
+        return GET(url, headers)
     }
 
 
@@ -314,9 +323,9 @@ class Yurivan : HttpSource() {
                     "story_id" to "eq.$storyId",
                     "chapter_index" to "eq.$index",
                     "select" to "text_body,inline_images",
-                    "type" to "text",
                     "limit" to "1",
                 ),
+                type = type,
             )
 
             "video" -> supabaseGet(
@@ -325,9 +334,9 @@ class Yurivan : HttpSource() {
                     "story_id" to "eq.$storyId",
                     "chapter_index" to "eq.$index",
                     "select" to "bunny_thumbnail_url,cover_object_key,duration_seconds",
-                    "type" to "video",
                     "limit" to "1",
                 ),
+                type = type,
             )
 
             else -> supabaseGet(
@@ -337,16 +346,16 @@ class Yurivan : HttpSource() {
                     "chapter_index" to "eq.$index",
                     "select" to "global_page_index,chapter_index,local_page_index,object_key,width,height,bytes",
                     "order" to "local_page_index.asc",
-                    "type" to "gallery",
                     "limit" to "5000",
                 ),
+                type = type,
             )
         }
     }
 
     override fun pageListParse(response: Response): List<Page> {
 
-        val type = response.request.url.queryParameter("type") ?: "gallery"
+        val type = response.request.header("X-Yurivan-Type") ?: "gallery"
         val body = response.body!!.string()
 
         return when (type) {
