@@ -63,6 +63,7 @@ dependencies {
     compileOnly("com.squareup.okhttp3:okhttp:4.12.0")
     compileOnly("com.squareup.okio:okio:3.9.0")
     compileOnly("org.jsoup:jsoup:1.17.2")
+    compileOnly("org.jspecify:jspecify:1.0.0")
     compileOnly("com.google.code.gson:gson:2.10.1")
     implementation(kotlin("stdlib"))
     

@@ -120,11 +120,11 @@ class MangaBall : HttpSource() {
     )
 
     private val popularFilters = FilterList(
-        SortFilter("Sort", sortOptions, Selection(0, false)),
+        SortFilter("Sort", sortOptions, Filter.Sort.Selection(0, false)),
     )
 
     private val latestFilters = FilterList(
-        SortFilter("Sort", sortOptions, Selection(0, false)),
+        SortFilter("Sort", sortOptions, Filter.Sort.Selection(0, false)),
     )
 
     override fun popularMangaRequest(page: Int): Request =
