@@ -143,6 +143,7 @@ class Kagane : HttpSource(), ConfigurableSource {
                 is ContentRatingFilter -> f.state.filter { it.state }.forEach { ratings.add(it.name) }
                 is FormatFilter -> f.state.filter { it.state }.forEach { formats.add(it.name) }
                 is StatusFilter -> f.state.filter { it.state }.forEach { statuses.add(it.name) }
+                else -> {}
             }
         }
 
@@ -281,35 +282,6 @@ class Kagane : HttpSource(), ConfigurableSource {
         }
     }
 
-    private fun cleanDescription(desc: String): String =
-        desc
-            .replace(Regex("\\[([^\\]]+)\\]\\([^)]*\\)"), "$1")
-            .replace(Regex("\\*\\*|__|~~"), "")
-            .replace(Regex("\\n{3,}"), "\n\n")
-            .trim()
-
-    private fun statusFrom(status: String?): Int = when (status?.uppercase()) {
-        "ONGOING" -> SManga.ONGOING
-        "COMPLETED" -> SManga.COMPLETED
-        "HIATUS" -> SManga.ON_HIATUS
-        "ABANDONED", "CANCELLED" -> SManga.CANCELLED
-        else -> SManga.UNKNOWN
-    }
-
-    private val dateFormats = listOf(
-        "yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'",
-        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
-        "yyyy-MM-dd'T'HH:mm:ss'Z'",
-        "yyyy-MM-dd'T'HH:mm:ss",
-    ).map { SimpleDateFormat(it, Locale.ROOT).apply { timeZone = TimeZone.getTimeZone("UTC") } }
-
-    private fun parseDate(raw: String?): Long {
-        if (raw.isNullOrBlank()) return 0L
-        return dateFormats.firstNotNullOfOrNull { fmt ->
-            runCatching { fmt.parse(raw)?.time }.getOrNull()
-        } ?: 0L
-    }
-
     // ============================== Filters ===============================
 
     private class SortFilter(
@@ -324,19 +296,22 @@ class Kagane : HttpSource(), ConfigurableSource {
             }
     }
 
+    private class CheckBoxOption(name: String, checked: Boolean = false) :
+        Filter.CheckBox(name, checked)
+
     private class ContentRatingFilter : Filter.Group<Filter.CheckBox>(
         "Content Rating",
-        CONTENT_RATINGS.map { Filter.CheckBox(it, true) },
+        CONTENT_RATINGS.map { CheckBoxOption(it, true) },
     )
 
     private class FormatFilter : Filter.Group<Filter.CheckBox>(
         "Format",
-        FORMATS.map { Filter.CheckBox(it, false) },
+        FORMATS.map { CheckBoxOption(it) },
     )
 
     private class StatusFilter : Filter.Group<Filter.CheckBox>(
         "Status",
-        STATUSES.map { Filter.CheckBox(it, false) },
+        STATUSES.map { CheckBoxOption(it) },
     )
 
     companion object {
@@ -469,4 +444,35 @@ class Kagane : HttpSource(), ConfigurableSource {
         val token: String,
         val exp: Long,
     )
+}
+
+// ========================= Top-level helpers ==========================
+
+private fun cleanDescription(desc: String): String =
+    desc
+        .replace(Regex("\\[([^\\]]+)\\]\\([^)]*\\)"), "$1")
+        .replace(Regex("\\*\\*|__|~~"), "")
+        .replace(Regex("\\n{3,}"), "\n\n")
+        .trim()
+
+private fun statusFrom(status: String?): Int = when (status?.uppercase()) {
+    "ONGOING" -> SManga.ONGOING
+    "COMPLETED" -> SManga.COMPLETED
+    "HIATUS" -> SManga.ON_HIATUS
+    "ABANDONED", "CANCELLED" -> SManga.CANCELLED
+    else -> SManga.UNKNOWN
+}
+
+private val dateFormats = listOf(
+    "yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'",
+    "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+    "yyyy-MM-dd'T'HH:mm:ss'Z'",
+    "yyyy-MM-dd'T'HH:mm:ss",
+).map { SimpleDateFormat(it, Locale.ROOT).apply { timeZone = TimeZone.getTimeZone("UTC") } }
+
+private fun parseDate(raw: String?): Long {
+    if (raw.isNullOrBlank()) return 0L
+    return dateFormats.firstNotNullOfOrNull { fmt ->
+        runCatching { fmt.parse(raw)?.time }.getOrNull()
+    } ?: 0L
 }
