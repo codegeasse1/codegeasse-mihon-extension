@@ -56,12 +56,13 @@ import javax.crypto.spec.SecretKeySpec
  *     Pages     : GET /api/manga/r/<minted-token>
  *
  * The pages endpoint is DRM-wrapped in the site's own client-side crypto:
- * the request URL embeds a short-lived token `mint()`ed from two constant
- * keys that the site ships encrypted in its RSC payload, and the request
- * must carry a DPoP proof (`cant-catch-this-monkey`) signed with a per-app
- * P-256 keypair. Successful responses may wrap the chapter data in a
- * `session_data` blob that is AES-CBC encrypted with a key derived from one
- * of those constants + the request nonce (+ a public-key thumbprint), so we
+ * the request URL embeds a short-lived token `mint()`ed from two keys that
+ * the site rotates and ships *sealed inside every reader page's React
+ * flight payload* (re-extracted at runtime, see readerKeys()), and the
+ * request must carry a DPoP proof (`cant-catch-this-monkey`) signed with a
+ * per-app P-256 keypair. Successful responses may wrap the chapter data in
+ * a `session_data` blob that is AES-CBC encrypted with a key derived from
+ * one of those keys + the request nonce (+ a public-key thumbprint), so we
  * decrypt it before reading the page URLs.
  *
  * The site additionally requires a Cloudflare Turnstile token on the pages
@@ -305,6 +306,7 @@ class LunarX : HttpSource(), ConfigurableSource {
         "$baseUrl${chapter.url}"
 
     private var lastChapterUrl: String = ""
+    private var lastKeys: Pair<String, String> = DEFAULT_KEYS
 
     override fun pageListRequest(chapter: SChapter): Request {
         lastChapterUrl = chapter.url
@@ -316,9 +318,12 @@ class LunarX : HttpSource(), ConfigurableSource {
         val num = path.substringAfterLast("/").substringBefore("?")
         val lang = path.substringAfter("lang=", "en").substringBefore("&")
 
+        val keys = readerKeys(slug, num)
+        lastKeys = keys
+
         val kp = keyPair()
         val rand = Random()
-        val minted = mint(slug, num, rand)
+        val minted = mint(slug, num, rand, keys)
         lastNonce = minted.nonce
 
         val base = "$apiUrl/api/manga/r/${minted.token}"
@@ -374,7 +379,7 @@ class LunarX : HttpSource(), ConfigurableSource {
                 // Chapter payload may be wrapped in an encrypted session_data blob.
                 val session = data["session_data"]?.jsonPrimitive?.contentOrNull
                 if (!session.isNullOrEmpty()) {
-                    val decrypted = unpackSession(session, lastNonce, keyPair())
+                    val decrypted = unpackSession(session, lastNonce, keyPair(), lastKeys)
                     if (decrypted != null) {
                         root = json.parseToJsonElement(decrypted).jsonObject
                         data = root["data"] as? JsonObject
@@ -571,9 +576,9 @@ class LunarX : HttpSource(), ConfigurableSource {
         return base64Url(sha256(canonical.toByteArray()))
     }
 
-    private fun mint(slug: String, chapter: String, rand: Random): Minted {
-        val k0 = KEY0.toByteArray()
-        val k1 = KEY1.toByteArray()
+    private fun mint(slug: String, chapter: String, rand: Random, keys: Pair<String, String>): Minted {
+        val k0 = keys.first.toByteArray()
+        val k1 = keys.second.toByteArray()
         val key = blend(k0, k1)
         val nonce = randomString(12, rand)
         val hex = java.lang.Long.toHexString(System.currentTimeMillis() / 1000)
@@ -607,9 +612,9 @@ class LunarX : HttpSource(), ConfigurableSource {
         return base64Url(out)
     }
 
-    private fun unpackSession(session: String, nonce: String, kp: KeyPair): String? {
+    private fun unpackSession(session: String, nonce: String, kp: KeyPair, keys: Pair<String, String>): String? {
         val ct = b64DecodeLenient(session) ?: return null
-        val k0 = KEY0.toByteArray()
+        val k0 = keys.first.toByteArray()
 
         val keys = listOf(
             sha256(k0 + byteArrayOf(0x01) + nonce.toByteArray() + byteArrayOf(0x02) + thumbprint(kp).toByteArray()),
@@ -635,6 +640,191 @@ class LunarX : HttpSource(), ConfigurableSource {
         val chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
         return buildString {
             repeat(len) { append(chars[rand.nextInt(chars.length)]) }
+        }
+    }
+
+
+    // ==================== Runtime reader-key extraction ====================
+    //
+    // The mint keys are rotated by the site and shipped sealed inside every
+    // reader page's React flight payload (module 817263 in chunk r1.js).
+    // To stay current we fetch the reader HTML once per KEYS_TTL and undo the
+    // two-stage obfuscation: stage 1 XORs with a 31-hash of the entry name,
+    // stage 2 feeds an LCG + program through a byte transform and validates
+    // a magic header before splitting out the two keys.
+
+    private fun readerKeys(slug: String, num: String): Pair<String, String> {
+        val now = System.currentTimeMillis()
+        cachedKeys?.let {
+            if (now - keysFetchedAt < KEYS_TTL_MS) return it
+        }
+        return try {
+            val extracted = fetchKeysFromPage(slug, num)
+            if (extracted != null) {
+                cachedKeys = extracted
+                keysFetchedAt = now
+                extracted
+            } else {
+                cachedKeys ?: DEFAULT_KEYS
+            }
+        } catch (_: Exception) {
+            cachedKeys ?: DEFAULT_KEYS
+        }
+    }
+
+    private fun fetchKeysFromPage(slug: String, num: String): Pair<String, String>? {
+        val req = GET("$baseUrl/manga/$slug/$num", apiHeaders())
+        val resp = network.client.newCall(req).execute()
+        resp.use {
+            if (!it.isSuccessful) return null
+            return extractKeys(it.body!!.string())
+        }
+    }
+
+    private fun extractKeys(html: String): Pair<String, String>? {
+        val pushes = mutableListOf<String>()
+        for (m in FLIGHT_PUSH_RE.findAll(html)) {
+            pushes.add(unescapeJsonString(m.groupValues[1]))
+        }
+        if (pushes.isEmpty()) return null
+        val combined = pushes.joinToString("")
+
+        val props = LinkedHashMap<String, String>()
+        for (m in KV_PAIR_RE.findAll(combined)) {
+            props.putIfAbsent(m.groupValues[1], m.groupValues[2])
+        }
+
+        for ((name, value) in props) {
+            val entry = tryStage1(name, value) ?: continue
+            val keys = runStage2(entry, props) ?: continue
+            Log.d("LunarX", "extracted fresh reader keys (len ${keys.first.length}/${keys.second.length})")
+            return keys
+        }
+        return null
+    }
+
+    private data class SealedEntry(
+        val seed: Int,
+        val a: Int,
+        val b: Int,
+        val progStr: String,
+        val names: List<String>,
+    )
+
+    private fun tryStage1(name: String, value: String): SealedEntry? {
+        return runCatching {
+            val decoded = b64DecodeLenient(value.reversed()) ?: return null
+            val l = hash31(name)
+            val sb = StringBuilder(decoded.size)
+            for (i in decoded.indices) {
+                sb.append((decoded[i].toInt() and 0xff xor ((l + 37 * i) and 0xff)).toChar())
+            }
+            val parts = sb.toString().split("|")
+            if (parts.size != 6 || parts[0] != "3") return null
+            val seed = parts[1].toIntOrNull(16) ?: return null
+            val a = parts[2].toIntOrNull(16) ?: return null
+            val b = parts[3].toIntOrNull(16) ?: return null
+            SealedEntry(seed, a, b, parts[4], parts[5].split(".").filter { it.isNotBlank() })
+        }.getOrNull()
+    }
+
+    private fun runStage2(entry: SealedEntry, props: Map<String, String>): Pair<String, String>? {
+        val raw = entry.names.map { props[it] ?: "" }.joinToString("")
+        if (raw.length < 2 || raw.length % 2 != 0) return null
+
+        val prog = parseProgram(entry.progStr) ?: return null
+        val out = ArrayList<Int>(raw.length / 2)
+        var state = entry.seed and 0xff
+        var prev = 0
+        var step = 0
+        var i = 0
+        while (i < raw.length) {
+            val byte = raw.substring(i, i + 2).toIntOrNull(16) ?: return null
+            state = (state * entry.a + entry.b) and 0xff
+            out.add(transformByte(byte xor prev, step, state, prog))
+            prev = byte
+            step++
+            i += 2
+        }
+
+        if (out.size < 7 || out[0] != 0xA7 || out[1] != 0x3E || out[2] != 0x91) return null
+        val k0Len = (out[3] shl 8) or out[4]
+        val k1Len = (out[5] shl 8) or out[6]
+        if (k0Len <= 0 || k1Len <= 0 || 7 + k0Len + k1Len > out.size) return null
+
+        val k0 = StringBuilder(k0Len)
+        for (j in 0 until k0Len) k0.append(out[7 + j].toChar())
+        val k1 = StringBuilder(k1Len)
+        for (j in 0 until k1Len) k1.append(out[7 + k0Len + j].toChar())
+        return k0.toString() to k1.toString()
+    }
+
+    private fun parseProgram(s: String): List<IntArray>? {
+        if (s.isEmpty() || s.length % 3 != 0) return null
+        val out = ArrayList<IntArray>(s.length / 3)
+        var i = 0
+        while (i < s.length) {
+            val op = s[i].digitToIntOrNull(16) ?: return null
+            val arg = s.substring(i + 1, i + 3).toIntOrNull(16) ?: return null
+            if (op > 7) return null
+            out.add(intArrayOf(op, arg))
+            i += 3
+        }
+        return out
+    }
+
+    private fun transformByte(input: Int, step: Int, state: Int, prog: List<IntArray>): Int {
+        var n = input and 0xff
+        for (i in prog.indices.reversed()) {
+            val op = prog[i][0]
+            val f = prog[i][1]
+            n = when (op) {
+                0 -> n xor f
+                1 -> (n - f) and 0xff
+                2 -> {
+                    val rot = (7 and f).takeIf { it != 0 } ?: 1
+                    (((n ushr rot) or (n shl (8 - rot))) and 0xff)
+                }
+                3 -> (((15 and n) shl 4) or (n ushr 4)) and 0xff
+                4 -> n xor state
+                5 -> n xor ((step * (1 or f) + f) and 0xff)
+                6 -> n.inv() and 0xff
+                else -> (f - n) and 0xff
+            }
+        }
+        return n and 0xff
+    }
+
+    private fun hash31(name: String): Int {
+        var t = 0
+        for (i in name.indices) t = (31 * t + name[i].code) and 0xff
+        return t
+    }
+
+    private fun unescapeJsonString(s: String): String = buildString {
+        var i = 0
+        while (i < s.length) {
+            val c = s[i]
+            if (c == '\\' && i + 1 < s.length) {
+                when (s[i + 1]) {
+                    '"' -> { append('"'); i += 2 }
+                    '\\' -> { append('\\'); i += 2 }
+                    '/' -> { append('/'); i += 2 }
+                    'n' -> { append('\n'); i += 2 }
+                    't' -> { append('\t'); i += 2 }
+                    'r' -> { append('\r'); i += 2 }
+                    'b' -> { append('\b'); i += 2 }
+                    'f' -> { append('\f'); i += 2 }
+                    'u' -> {
+                        val hex = s.substring(i + 2, minOf(i + 6, s.length))
+                        append(hex.toIntOrNull(16)?.toChar() ?: '?')
+                        i += 6
+                    }
+                    else -> { append(s[i + 1]); i += 2 }
+                }
+            } else {
+                append(c); i++
+            }
         }
     }
 
@@ -695,13 +885,29 @@ class LunarX : HttpSource(), ConfigurableSource {
         @Volatile
         private var keyPairHolder: KeyPair? = null
 
+        @Volatile
+        private var cachedKeys: Pair<String, String>? = null
+
+        @Volatile
+        private var keysFetchedAt: Long = 0L
+
+        private const val KEYS_TTL_MS = 45L * 60 * 1000
+
         /*
-         * Constant reader keys extracted from the site's encrypted RSC
-         * payload (rotated by the site maintainers — see the class comment
-         * if pages stop working).
+         * The reader mint keys. They are rotated by the site and shipped
+         * sealed inside every reader page's React flight payload, so the
+         * extension re-extracts them at runtime (see readerKeys()). These
+         * constants are only a bootstrapping fallback for when the page
+         * cannot be fetched — update them when the site rotates.
          */
-        private const val KEY0 = "RLxi7IOWuU1siL1B8LVrMtFtf2vo9HeeWORTbUjSF0Gt3y3RpXwY8cDiDtq3qwdclpv1TF4"
-        private const val KEY1 = "uTMtgEBM80im6vKqubDWvQmjmfvEjsDMATYjdxP34C01SNNEhBAj4F1RQYZRD47DcL3N3GXnacUtHh0F"
+        private val DEFAULT_KEYS: Pair<String, String> =
+            "4bLRZvIqOP4AaCkbVq2WclLZsUdxjvaYeai81xZgKbxv28z43CN5oQxgz" to
+                "HW8uYR0TmrH1fA6oHJpv72LNYbYeDcE7Vh7GWaJim7SyrMfENJ0eUE9ETJdlOXbOdDgyF9jUt4r"
+
+        private val FLIGHT_PUSH_RE =
+            Regex("self\\.__next_f\\.push\\(\\[[^\\]]*?\"((?:\\\\.|[^\"\\\\])*)\"\\]\\)")
+        private val KV_PAIR_RE =
+            Regex("\"([A-Za-z0-9_]{1,40})\":\"([^\"\\\\]{1,400})\"")
 
         private val chapterDateFormats = listOf(
             SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.ROOT),
