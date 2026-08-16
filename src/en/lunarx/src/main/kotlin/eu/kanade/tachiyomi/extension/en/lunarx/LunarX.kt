@@ -103,7 +103,6 @@ class LunarX : HttpSource(), ConfigurableSource {
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         appContext = screen.context.applicationContext
-        screen.preferenceManager.sharedPreferencesName = "source_$id"
         SwitchPreferenceCompat(screen.context).apply {
             key = SHOW_NSFW_PREF
             title = "Show 18+ content"
@@ -114,7 +113,7 @@ class LunarX : HttpSource(), ConfigurableSource {
 
     private fun showNsfw(): Boolean {
         val ctx = appContext ?: return true
-        return ctx.getSharedPreferences("source_$id", Context.MODE_PRIVATE)
+        return ctx.getSharedPreferences("${ctx.packageName}_preferences", Context.MODE_PRIVATE)
             .getBoolean(SHOW_NSFW_PREF, true)
     }
 
