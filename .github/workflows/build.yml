@@ -374,15 +374,13 @@ jobs:
       - name: Build every extension debug APKs
         run: set -o pipefail; gradle assembleDebug --stacktrace 2>&1 | tee build-error.log
 
-      - name: Commit build log on failure
+      - name: Upload build log artifact
         if: failure()
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add build-error.log
-          git commit -m "ci: build error log [skip ci]" || true
-          git push || true
-        run: gradle assembleDebug --stacktrace
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-error-log
+          path: build-error.log
+          if-no-files-found: warn
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
