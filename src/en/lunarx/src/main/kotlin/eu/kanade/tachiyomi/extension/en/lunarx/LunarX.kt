@@ -1,10 +1,10 @@
 package eu.kanade.tachiyomi.extension.en.lunarx
 
-import android.content.SharedPreferences
+import android.content.Context
 import android.util.Base64
+import android.util.Log
 import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreferenceCompat
-import codegeasse.utils.getPreferencesLazy
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.Filter
@@ -29,7 +29,6 @@ import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
 import java.math.BigInteger
-import java.security.KeyFactory
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.MessageDigest
@@ -37,8 +36,6 @@ import java.security.PrivateKey
 import java.security.Signature
 import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
-import java.security.spec.PKCS8EncodedKeySpec
-import java.security.spec.X509EncodedKeySpec
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.Random
@@ -88,8 +85,6 @@ class LunarX : HttpSource(), ConfigurableSource {
 
     private val apiUrl = "https://api.lunarx.to"
 
-    private val preferences: SharedPreferences by getPreferencesLazy()
-
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
@@ -100,8 +95,15 @@ class LunarX : HttpSource(), ConfigurableSource {
 
 
     // ============================== Settings ==============================
+    //
+    // No Injekt/Application dependency: the extension captures a Context from
+    // the preference screen when it's shown and keeps the DPoP keypair in
+    // memory, so it also runs on custom forks whose Injekt graph does not
+    // register `Application` (e.g. the user's nekoread build).
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
+        appContext = screen.context.applicationContext
+        screen.preferenceManager.sharedPreferencesName = "source_$id"
         SwitchPreferenceCompat(screen.context).apply {
             key = SHOW_NSFW_PREF
             title = "Show 18+ content"
@@ -110,7 +112,11 @@ class LunarX : HttpSource(), ConfigurableSource {
         }.let(screen::addPreference)
     }
 
-    private fun showNsfw(): Boolean = preferences.getBoolean(SHOW_NSFW_PREF, true)
+    private fun showNsfw(): Boolean {
+        val ctx = appContext ?: return true
+        return ctx.getSharedPreferences("source_$id", Context.MODE_PRIVATE)
+            .getBoolean(SHOW_NSFW_PREF, true)
+    }
 
 
     // ============================== Search & Browse ==============================
@@ -335,6 +341,7 @@ class LunarX : HttpSource(), ConfigurableSource {
 
         repeat(MAX_READER_ATTEMPTS) { attempt ->
             val body = resp.body!!.string()
+            Log.d("LunarX", "reader attempt ${attempt + 1}: HTTP ${resp.code} -> ${body.take(1200)}")
 
             if (!resp.isSuccessful) {
                 val msg = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()
@@ -354,7 +361,7 @@ class LunarX : HttpSource(), ConfigurableSource {
                             append(denied["message"]?.jsonPrimitive?.contentOrNull
                                 ?: "Access denied by the site")
                         }
-                        else -> "HTTP ${resp.code}"
+                        else -> "HTTP ${resp.code}: ${body.take(300)}"
                     },
                 )
             }
@@ -398,7 +405,10 @@ class LunarX : HttpSource(), ConfigurableSource {
                 resp.close()
                 resp = network.client.newCall(buildReaderRequest(lastChapterUrl)).execute()
             } else {
-                throw IOException("The site asked to revalidate this chapter repeatedly")
+                throw IOException(
+                    "LunarX kept asking to revalidate the chapter request. " +
+                        "Last response: ${body.take(300)}",
+                )
             }
         }
 
@@ -470,29 +480,13 @@ class LunarX : HttpSource(), ConfigurableSource {
     // ============================== Crypto (reader) ==============================
 
     private fun keyPair(): KeyPair {
-        val cached = preferences.getString(DPOP_KEY_PREF, null)
-        if (!cached.isNullOrEmpty()) {
-            runCatching {
-                val parts = cached.split(":")
-                val kf = KeyFactory.getInstance("EC")
-                val priv = kf.generatePrivate(
-                    PKCS8EncodedKeySpec(Base64.decode(parts[0], Base64.DEFAULT)),
-                )
-                val pub = kf.generatePublic(
-                    X509EncodedKeySpec(Base64.decode(parts[1], Base64.DEFAULT)),
-                )
-                return KeyPair(pub, priv)
-            }
-        }
+        keyPairHolder?.let { return it }
 
         val kp = KeyPairGenerator.getInstance("EC").apply {
             initialize(ECGenParameterSpec("secp256r1"))
         }.generateKeyPair()
 
-        val stored = Base64.encodeToString(kp.private.encoded, Base64.DEFAULT) + ":" +
-            Base64.encodeToString(kp.public.encoded, Base64.DEFAULT)
-        preferences.edit().putString(DPOP_KEY_PREF, stored).commit()
-
+        keyPairHolder = kp
         return kp
     }
 
@@ -695,7 +689,12 @@ class LunarX : HttpSource(), ConfigurableSource {
         private const val MAX_READER_ATTEMPTS = 3
 
         private const val SHOW_NSFW_PREF = "show_18_plus"
-        private const val DPOP_KEY_PREF = "dpop_p256_keys"
+
+        @Volatile
+        private var appContext: Context? = null
+
+        @Volatile
+        private var keyPairHolder: KeyPair? = null
 
         /*
          * Constant reader keys extracted from the site's encrypted RSC
