@@ -418,7 +418,12 @@ class LunarX : HttpSource(), ConfigurableSource {
                 if (slugOk && images != null && images.isNotEmpty()) {
                     return images.mapIndexedNotNull { i, el ->
                         val u = el.jsonPrimitive.contentOrNull ?: return@mapIndexedNotNull null
-                        val full = if (u.startsWith("http")) u else apiUrl + u
+                        val full = when {
+                            u.startsWith("http") -> u
+                            u.startsWith("//") -> "https:" + u
+                            u.startsWith("/") -> apiUrl + u
+                            else -> apiUrl + "/" + u
+                        }
                         Page(i, url = full, imageUrl = full)
                     }
                 }
@@ -443,8 +448,20 @@ class LunarX : HttpSource(), ConfigurableSource {
         throw IOException("Could not load chapter pages")
     }
 
-    override fun imageRequest(page: Page): Request =
-        GET(page.imageUrl!!, apiHeaders())
+    override fun imageRequest(page: Page): Request {
+        val url = page.imageUrl
+            ?: throw IOException("LunarX: null image URL")
+        Log.d("LunarX", "image -> ${url.take(160)}")
+        // The CDN is only fed by browsers/native WebViews on the site, so
+        // mirror exactly what a browser <img> request sends: a browser
+        // User-Agent and the reader page as Referer, and no Origin header.
+        return Request.Builder()
+            .url(url)
+            .header("User-Agent", BROWSER_UA)
+            .header("Referer", "$baseUrl$lastChapterUrl")
+            .get()
+            .build()
+    }
 
 
     // ============================== Helpers ==============================
@@ -996,6 +1013,10 @@ class LunarX : HttpSource(), ConfigurableSource {
 
         private const val PAGE_SIZE = 30
         private const val MAX_READER_ATTEMPTS = 3
+
+        private const val BROWSER_UA =
+            "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
 
         private const val SHOW_NSFW_PREF = "show_18_plus"
 
