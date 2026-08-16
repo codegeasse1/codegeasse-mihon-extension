@@ -247,6 +247,12 @@ class MangaK : HttpSource() {
         }.sortedByDescending { it.chapter_number }
     }
 
+    // ========================== URL helpers ===============================
+
+    private fun pathOf(url: String): String = url.substringBefore("#")
+
+    private fun idOf(url: String): String? = url.substringAfter("#", "").takeIf { it.isNotBlank() }
+
     // ========================== JSON helpers ==============================
 
     private fun JsonObject.opt(key: String): JsonElement? = get(key)?.takeIf { !it.isJsonNull }
