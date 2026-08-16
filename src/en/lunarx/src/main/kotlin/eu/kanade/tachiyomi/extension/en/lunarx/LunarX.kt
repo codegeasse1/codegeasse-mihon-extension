@@ -70,8 +70,14 @@ import javax.crypto.spec.SecretKeySpec
  * The site additionally requires a Cloudflare Turnstile token on the pages
  * endpoint when it flags the client; a plain HTTP client cannot produce
  * one, so if the reader is ever refused you'll see an "Access denied"
- * error there. Everything else (browse/search/details/chapters) is plain
- * JSON.
+ * error there. Without the token the API serves low-res preview pages
+ * (`/api/cdn/p/...`). Everything else (browse/search/details/chapters) is
+ * plain JSON.
+ *
+ * The pages endpoint answers new clients with a `cache_status: revalidate`
+ * handshake; pageListParse re-issues the request with a fresh minted token
+ * and DPoP proof until it gets chapter data (the same dance the website's
+ * reader performs).
  */
 class LunarX : HttpSource(), ConfigurableSource {
 
@@ -293,9 +299,14 @@ class LunarX : HttpSource(), ConfigurableSource {
     override fun getChapterUrl(chapter: SChapter): String =
         "$baseUrl${chapter.url}"
 
-    override fun pageListRequest(chapter: SChapter): Request {
+    private var lastChapterUrl: String = ""
 
-        val path = chapter.url
+    override fun pageListRequest(chapter: SChapter): Request {
+        lastChapterUrl = chapter.url
+        return buildReaderRequest(chapter.url)
+    }
+
+    private fun buildReaderRequest(path: String): Request {
         val slug = path.substringAfter("/manga/").substringBefore("/")
         val num = path.substringAfterLast("/").substringBefore("?")
         val lang = path.substringAfter("lang=", "en").substringBefore("&")
@@ -313,59 +324,85 @@ class LunarX : HttpSource(), ConfigurableSource {
             .url(url)
             .headers(apiHeaders())
             .addHeader("cant-catch-this-monkey", dpop)
+            .addHeader("X-Native-App", "true")
             .get()
             .build()
     }
 
     override fun pageListParse(response: Response): List<Page> {
 
-        val body = response.body!!.string()
+        var resp = response
 
-        if (!response.isSuccessful) {
-            val msg = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()
-            val denied = msg?.get("access_denied") as? JsonObject
-            val kofi = msg?.get("is_kofi_locked")?.jsonPrimitive?.booleanOrNull == true
-            val locked = msg?.get("is_locked")?.jsonPrimitive?.booleanOrNull == true
-            val password = msg?.get("is_password_protected")?.jsonPrimitive?.booleanOrNull == true
-            throw IOException(
-                when {
-                    kofi -> "This chapter is for Ko-fi supporters only"
-                    locked -> "This chapter is currently locked"
-                    password -> "This chapter is password protected"
-                    denied != null -> denied["message"]?.jsonPrimitive?.contentOrNull
-                        ?: "Access denied by the site"
-                    else -> "HTTP ${response.code}"
-                },
-            )
-        }
+        repeat(MAX_READER_ATTEMPTS) { attempt ->
+            val body = resp.body!!.string()
 
-        var root = json.parseToJsonElement(body).jsonObject
-        var data = root["data"] as? JsonObject
-            ?: throw IOException("No chapter data in response")
+            if (!resp.isSuccessful) {
+                val msg = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()
+                val denied = msg?.get("access_denied") as? JsonObject
+                val kofi = msg?.get("is_kofi_locked")?.jsonPrimitive?.booleanOrNull == true
+                val locked = msg?.get("is_locked")?.jsonPrimitive?.booleanOrNull == true
+                val password = msg?.get("is_password_protected")?.jsonPrimitive?.booleanOrNull == true
+                throw IOException(
+                    when {
+                        kofi -> "This chapter is for Ko-fi supporters only"
+                        locked -> "This chapter is currently locked"
+                        password -> "This chapter is password protected"
+                        denied != null -> buildString {
+                            denied["reason"]?.jsonPrimitive?.contentOrNull
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { append(it, ": ") }
+                            append(denied["message"]?.jsonPrimitive?.contentOrNull
+                                ?: "Access denied by the site")
+                        }
+                        else -> "HTTP ${resp.code}"
+                    },
+                )
+            }
 
-        if (data["is_coming_soon"]?.jsonPrimitive?.booleanOrNull == true) {
-            throw IOException("This chapter is coming soon")
-        }
+            var root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()
+                ?: throw IOException("Invalid response from the reader API")
+            var data = root["data"] as? JsonObject
+            val revalidate = root["cache_status"]?.jsonPrimitive?.contentOrNull == "revalidate"
 
-        // Chapter payload may be wrapped in an encrypted session_data blob.
-        val session = data["session_data"]?.jsonPrimitive?.contentOrNull
-        if (!session.isNullOrEmpty()) {
-            val decrypted = unpackSession(session, lastNonce, keyPair())
-            if (decrypted != null) {
-                root = json.parseToJsonElement(decrypted).jsonObject
-                data = root["data"] as? JsonObject
-                    ?: throw IOException("No chapter data after unpack")
+            if (data != null && !revalidate) {
+                // Chapter payload may be wrapped in an encrypted session_data blob.
+                val session = data["session_data"]?.jsonPrimitive?.contentOrNull
+                if (!session.isNullOrEmpty()) {
+                    val decrypted = unpackSession(session, lastNonce, keyPair())
+                    if (decrypted != null) {
+                        root = json.parseToJsonElement(decrypted).jsonObject
+                        data = root["data"] as? JsonObject
+                    }
+                }
+
+                if (data != null && data["is_coming_soon"]?.jsonPrimitive?.booleanOrNull == true) {
+                    throw IOException("This chapter is coming soon")
+                }
+
+                val wantedSlug = lastChapterUrl.substringAfter("/manga/").substringBefore("/")
+                val gotSlug = root["slug"]?.jsonPrimitive?.contentOrNull
+                val slugOk = gotSlug == null || gotSlug == "unknown" || gotSlug == wantedSlug
+
+                val images = data?.get("images") as? JsonArray
+                if (slugOk && images != null && images.isNotEmpty()) {
+                    return images.mapIndexedNotNull { i, el ->
+                        val u = el.jsonPrimitive.contentOrNull ?: return@mapIndexedNotNull null
+                        val full = if (u.startsWith("http")) u else apiUrl + u
+                        Page(i, url = full, imageUrl = full)
+                    }
+                }
+                // Missing/empty images or slug mismatch => the server wants a revalidate.
+            }
+
+            if (attempt < MAX_READER_ATTEMPTS - 1) {
+                resp.close()
+                resp = network.client.newCall(buildReaderRequest(lastChapterUrl)).execute()
+            } else {
+                throw IOException("The site asked to revalidate this chapter repeatedly")
             }
         }
 
-        val images = data["images"] as? JsonArray ?: return emptyList()
-        val base = data["base_url"]?.jsonPrimitive?.contentOrNull ?: apiUrl
-
-        return images.mapIndexedNotNull { i, el ->
-            val u = el.jsonPrimitive.contentOrNull ?: return@mapIndexedNotNull null
-            val full = if (u.startsWith("http")) u else "$base$u"
-            Page(i, url = full, imageUrl = full)
-        }
+        throw IOException("Could not load chapter pages")
     }
 
     override fun imageRequest(page: Page): Request =
@@ -374,10 +411,12 @@ class LunarX : HttpSource(), ConfigurableSource {
 
     // ============================== Helpers ==============================
 
-    private fun apiHeaders(): Headers = headersBuilder()
-        .set("Origin", baseUrl)
-        .set("Referer", "$baseUrl/")
-        .build()
+    override fun headersBuilder(): Headers.Builder =
+        super.headersBuilder()
+            .set("Origin", baseUrl)
+            .set("Referer", "$baseUrl/")
+
+    private fun apiHeaders(): Headers = headersBuilder().build()
 
     private fun JsonObject.toSManga(): SManga? {
         val slug = get("slug")?.jsonPrimitive?.contentOrNull ?: return null
@@ -653,6 +692,7 @@ class LunarX : HttpSource(), ConfigurableSource {
     companion object {
 
         private const val PAGE_SIZE = 30
+        private const val MAX_READER_ATTEMPTS = 3
 
         private const val SHOW_NSFW_PREF = "show_18_plus"
         private const val DPOP_KEY_PREF = "dpop_p256_keys"
