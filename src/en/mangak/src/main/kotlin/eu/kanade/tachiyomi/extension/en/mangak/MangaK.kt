@@ -14,6 +14,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -43,8 +44,9 @@ import java.util.TimeZone
  * from a bare URL falls back to its SSR page, which carries the same id.
  *
  * Image CDNs (rx.resmk.org covers, rx.qvzr*.org pages) are Cloudflare-gated:
- * requests must carry a browser User-Agent + mangak.io Referer. Datacenter
- * IPs are blocked outright; residential traffic passes.
+ * all requests carry a browser User-Agent + mangak.io Referer, and failed
+ * image loads are retried on the site's own fallback host (rx.rzyn.net)
+ * exactly like the site's reader does (see imageFallbackInterceptor).
  */
 class MangaK : HttpSource() {
 
@@ -61,15 +63,42 @@ class MangaK : HttpSource() {
     // (plain OkHttpClient -> no Injekt graph dependency, Tachidesk-safe).
     private val directClient: OkHttpClient by lazy { OkHttpClient() }
 
+    // The image CDNs (rx.qvzr*.org / rx.resmk.org) are Cloudflare-gated and
+    // intermittently block automated clients. The site's own reader retries a
+    // failed image as: original -> +?v=1 -> host swapped to rx.rzyn.net.
+    // Mirror that here so chapter pages and covers still load.
+    private val imageFallbackInterceptor = Interceptor { chain ->
+        val request = chain.request()
+        var response = chain.proceed(request)
+        if (response.isSuccessful || !IMAGE_HOST_REGEX.matches(request.url.host)) {
+            return@Interceptor response
+        }
+
+        response.close()
+        val withV = request.url.newBuilder().addQueryParameter("v", "1").build()
+        response = chain.proceed(request.newBuilder().url(withV).build())
+        if (response.isSuccessful) return@Interceptor response
+
+        response.close()
+        val fallback = request.url.newBuilder().host(FALLBACK_IMAGE_HOST).build()
+        response = chain.proceed(request.newBuilder().url(fallback).build())
+        if (response.isSuccessful) return@Interceptor response
+
+        response.close()
+        val fallbackV = fallback.newBuilder().addQueryParameter("v", "1").build()
+        chain.proceed(request.newBuilder().url(fallbackV).build())
+    }
+
+    override val client: OkHttpClient = network.client.newBuilder()
+        .addInterceptor(imageFallbackInterceptor)
+        .build()
+
     override fun headersBuilder(): Headers.Builder =
         super.headersBuilder()
             .set("User-Agent", BROWSER_UA)
+            .set("Referer", "$baseUrl/")
 
     private fun apiHeaders(): Headers = headersBuilder().build()
-
-    private fun imageHeaders(): Headers = headersBuilder()
-        .set("Referer", "$baseUrl/")
-        .build()
 
     // ========================== Browse & Search ===========================
 
@@ -214,7 +243,7 @@ class MangaK : HttpSource() {
     }
 
     override fun imageRequest(page: Page): Request =
-        GET(page.imageUrl ?: page.url, imageHeaders())
+        GET(page.imageUrl ?: page.url, apiHeaders())
 
     // ============================== Parsers ===============================
 
@@ -329,6 +358,9 @@ class MangaK : HttpSource() {
     companion object {
         private const val PAGE_LIMIT = 24
         private const val QUERY_LIMIT = 50
+        private const val FALLBACK_IMAGE_HOST = "rx.rzyn.net"
+
+        private val IMAGE_HOST_REGEX = Regex("rx\\.(qvzr[a-z]|resmk)\\.org")
 
         private const val BROWSER_UA =
             "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
