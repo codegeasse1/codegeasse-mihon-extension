@@ -1,56 +1,15 @@
 name: lunarx-probe
+
 on:
   workflow_dispatch:
-permissions:
-  contents: write
+
 jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          token: ${{ github.token }}
-      - name: Probe endpoints
-        run: |
-          OUT=/tmp/lunarx-probe-output.txt
-          echo "=== 1. chapters: /api/manga/one-piece WITH origin ===" > $OUT
-          curl -sS -w "\nHTTP:%{http_code}\n" -H "Origin: https://lunarx.to" https://api.lunarx.to/api/manga/one-piece -D /tmp/h1.txt >> $OUT
-          head -20 /tmp/h1.txt >> $OUT
-          head -c 4000 /tmp/m1x.json 2>/dev/null >> $OUT || true
-          echo "=== 1b. chapters (store json) ===" >> $OUT
-          curl -sS -H "Origin: https://lunarx.to" https://api.lunarx.to/api/manga/one-piece -o /tmp/m1.json
-          wc -c /tmp/m1.json >> $OUT
-          echo "=== 2. chapters WITHOUT origin ===" >> $OUT
-          curl -sS -w "\nHTTP:%{http_code}\n" https://api.lunarx.to/api/manga/one-piece -o /tmp/m2.json >> $OUT
-          head -c 500 /tmp/m2.json >> $OUT; echo >> $OUT
-          echo "=== 3. recently-updated ===" >> $OUT
-          curl -sS -w "\nHTTP:%{http_code}\n" -H "Origin: https://lunarx.to" "https://api.lunarx.to/api/manga/recently-updated?limit=3" -o /tmp/m3.json >> $OUT
-          head -c 4000 /tmp/m3.json >> $OUT; echo >> $OUT
-          echo "=== 4. title/one-piece ===" >> $OUT
-          curl -sS -w "\nHTTP:%{http_code}\n" -H "Origin: https://lunarx.to" "https://api.lunarx.to/api/manga/title/one-piece" -o /tmp/m4.json >> $OUT
-          head -c 4000 /tmp/m4.json >> $OUT; echo >> $OUT
-          echo "=== 5. guild search POST ===" >> $OUT
-          curl -sS -w "\nHTTP:%{http_code}\n" -H "Origin: https://lunarx.to" -H "Content-Type: application/json" -X POST -d '{"query":"test","limit":3,"page":1}' https://api.lunarx.to/api/guild/search -o /tmp/m5.json >> $OUT
-          head -c 2000 /tmp/m5.json >> $OUT; echo >> $OUT
-          echo "=== 6. raw reader attempt (bad token) ===" >> $OUT
-          curl -sS -w "\nHTTP:%{http_code}\n" -H "Origin: https://lunarx.to" "https://api.lunarx.to/api/manga/r/AAAA" -o /tmp/m6.json >> $OUT
-          head -c 2000 /tmp/m6.json >> $OUT; echo >> $OUT
-          echo "=== 7. anidb search ===" >> $OUT
-          curl -sS -w "\nHTTP:%{http_code}\n" -H "Origin: https://lunarx.to" "https://api.lunarx.to/api/anidb/search?q=one+piece" -o /tmp/m7.json >> $OUT
-          head -c 2000 /tmp/m7.json >> $OUT; echo >> $OUT
-          echo "=== 8. manga search guess ===" >> $OUT
-          curl -sS -w "\nHTTP:%{http_code}\n" -H "Origin: https://lunarx.to" "https://api.lunarx.to/api/manga/search?q=one+piece" -o /tmp/m8.json >> $OUT
-          head -c 2000 /tmp/m8.json >> $OUT; echo >> $OUT
-          echo "=== 9. no origin on recently-updated ===" >> $OUT
-          curl -sS -w "\nHTTP:%{http_code}\n" "https://api.lunarx.to/api/manga/recently-updated?limit=2" -o /tmp/m9.json >> $OUT
-          head -c 500 /tmp/m9.json >> $OUT; echo >> $OUT
-          echo "=== DONE ===" >> $OUT
-          cp /tmp/m1.json /tmp/m3.json /tmp/m4.json /tmp/m6.json /tmp/m7.json /tmp/m8.json . 2>/dev/null || true
-      - name: Commit output to repo
-        run: |
-          cp /tmp/lunarx-probe-output.txt ./lunarx-probe-output.txt
-          git config user.name "codegeasse1"
-          git config user.email "codegeasse1@users.noreply.github.com"
-          git add lunarx-probe-output.txt m1.json m3.json m4.json m6.json m7.json m8.json || true
-          git commit -m "chore: lunarx probe output (temp)" || true
-          git push origin main || true
+          node-version: 20
+      - name: Run probe
+        run: node lunarx-probe.mjs
