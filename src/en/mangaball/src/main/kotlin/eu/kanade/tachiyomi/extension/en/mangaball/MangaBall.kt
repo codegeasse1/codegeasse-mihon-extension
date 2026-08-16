@@ -13,6 +13,14 @@ import eu.kanade.tachiyomi.util.asJsoup
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.FormBody
 import okhttp3.Request
 import okhttp3.Response
@@ -298,40 +306,84 @@ class MangaBall : HttpSource() {
     override fun chapterListRequest(manga: SManga): Request =
         apiPost(
             "/api/v1/chapter/chapter-listing-by-title-id/",
-            linkedMapOf("title_id" to titleIdFrom(manga.url)),
+            linkedMapOf(
+                "title_id" to titleIdFrom(manga.url),
+                "userSettingsEnabled" to "false",
+            ),
         )
 
     override fun chapterListParse(response: Response): List<SChapter> {
 
-        val data = json.decodeFromString<ChaptersResponse>(response.body!!.string())
+        val body = response.body!!.string()
 
-        return data.ALL_CHAPTERS
-            .flatMap { block ->
+        val blocks = runCatching {
+            json.decodeFromString<ChaptersResponse>(body).ALL_CHAPTERS
+        }.getOrElse {
+            lenientChapterBlocks(body)
+        }
+
+        return blocks
+            .mapNotNull { block ->
                 // Prefer an English translation, else the first available.
                 val translation = block.translations
                     .firstOrNull { it.language.equals("en", true) }
                     ?: block.translations.firstOrNull()
-                    ?: return@flatMap emptyList<SChapter>()
+                    ?: return@mapNotNull null
 
-                listOf(
-                    SChapter.create().apply {
-                        url = translation.url.takeIf { it.startsWith("/") }
-                            ?: "/chapter-detail/${translation.id}/"
-                        name = translation.name?.takeIf { it.isNotBlank() }
-                            ?: block.number?.takeIf { it.isNotBlank() }
-                            ?: "Chapter ${block.number_float}"
-                        date_upload = translation.date
-                            .substringBefore(".")
-                            .let {
-                                runCatching { chapterDateFormat.parse(it)?.time }
-                                    .getOrNull()
-                                    ?: 0L
-                            }
-                    },
-                )
+                SChapter.create().apply {
+                    url = "/chapter-detail/${translation.id}/"
+                    name = translation.name?.takeIf { it.isNotBlank() }
+                        ?: block.number?.takeIf { it.isNotBlank() }
+                        ?: "Chapter ${block.number_float}"
+                    date_upload = translation.date
+                        .substringBefore(".")
+                        .let { dateStr ->
+                            chapterDateFormats
+                                .firstNotNullOfOrNull { runCatching { it.parse(dateStr)?.time }.getOrNull() }
+                                ?: 0L
+                        }
+                }
             }
             .sortedBy { chapterNumberFrom(it.name) }
             .reversed()
+    }
+
+    /*
+     * The site aggregates chapters from many upload groups, so a single
+     * oddly-typed block must not nuke the whole list. If the strict DTO
+     * decode fails, fall back to a manual tree walk.
+     */
+    private fun lenientChapterBlocks(body: String): List<ChapterBlockDto> {
+
+        val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return emptyList()
+        val blocks = root["ALL_CHAPTERS"] as? JsonArray ?: return emptyList()
+
+        return blocks.mapNotNull { el ->
+            runCatching {
+                val block = el as? JsonObject ?: return@runCatching null
+                val number = block["number"]?.jsonPrimitive?.contentOrNull
+                val numberFloat = block["number_float"]?.jsonPrimitive?.doubleOrNull ?: 0.0
+                val translations = block["translations"] as? JsonArray ?: return@runCatching null
+
+                val parsed = translations.mapNotNull { t ->
+                    val tObj = t as? JsonObject ?: return@mapNotNull null
+                    val id = tObj["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    ChapterTranslationDto(
+                        id = id,
+                        name = tObj["name"]?.jsonPrimitive?.contentOrNull,
+                        language = tObj["language"]?.jsonPrimitive?.contentOrNull,
+                        date = tObj["date"]?.jsonPrimitive?.contentOrNull ?: "",
+                        url = tObj["url"]?.jsonPrimitive?.contentOrNull ?: "",
+                    )
+                }
+
+                ChapterBlockDto(
+                    number = number,
+                    number_float = numberFloat,
+                    translations = parsed,
+                )
+            }.getOrNull()
+        }
     }
 
     private fun chapterNumberFrom(name: String): Double =
@@ -365,9 +417,20 @@ class MangaBall : HttpSource() {
     // ============================== Helpers ==============================
 
     private fun MangaItemDto.toSManga(): SManga = SManga.create().apply {
-        url = this@toSManga.url
+        url = this@toSManga.url.toRelativePath()
         title = this@toSManga.name
         thumbnail_url = this@toSManga.cover
+    }
+
+    /*
+     * The API returns full absolute URLs (e.g.
+     * http://mangaball.net/title-detail/<slug>-<id>/), but everything in
+     * this source is built relative to baseUrl, so strip scheme + host.
+     */
+    private fun String.toRelativePath(): String {
+        val withoutQuery = substringBefore("?")
+        val path = if (contains("mangaball.net")) substringAfter("mangaball.net") else withoutQuery
+        return path.ifBlank { "/" }
     }
 
     private fun titleIdFrom(url: String): String =
@@ -477,7 +540,7 @@ class MangaBall : HttpSource() {
         val id: String = "",
         val name: String? = null,
         val language: String? = null,
-        val volume: String? = null,
+        val volume: JsonElement? = null,
         val date: String = "",
         val views: Int = 0,
         val likes: Int = 0,
@@ -490,11 +553,9 @@ class MangaBall : HttpSource() {
 
         private const val PAGE_SIZE = 20
 
-        private val chapterDateFormat = SimpleDateFormat(
-            "yyyy-MM-dd'T'HH:mm:ss",
-            Locale.ROOT,
-        ).apply {
-            timeZone = TimeZone.getTimeZone("UTC")
-        }
+        private val chapterDateFormats = listOf(
+            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT),
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.ROOT),
+        ).map { it.apply { timeZone = TimeZone.getTimeZone("UTC") } }
     }
 }
