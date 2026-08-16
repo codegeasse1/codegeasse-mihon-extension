@@ -393,17 +393,19 @@ class Yurivan : HttpSource() {
 
     // ============================== Helpers ==============================
 
-    private fun StoryListDto.toSManga() = SManga.create().apply {
-        url = id
-        title = title
-        thumbnail_url = cover_url
-    }
+    private fun StoryListDto.toSManga(): SManga =
+        SManga.create().apply {
+            url = this@toSManga.id
+            title = this@toSManga.title
+            thumbnail_url = cover_url
+        }
 
-    private fun StoryDto.toSManga() = SManga.create().apply {
-        url = id
-        title = title
-        thumbnail_url = cover_url
-    }
+    private fun StoryDto.toSManga(): SManga =
+        SManga.create().apply {
+            url = this@toSManga.id
+            title = this@toSManga.title
+            thumbnail_url = cover_url
+        }
 
     private fun StoryDto.originalCreatorString(): String? {
 
