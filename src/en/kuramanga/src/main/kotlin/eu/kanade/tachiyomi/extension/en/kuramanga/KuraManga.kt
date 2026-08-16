@@ -250,7 +250,7 @@ class KuraManga : HttpSource() {
 
     private class StatusFilter : Filter.Select<String>(
         "Status",
-        STATUSES.map { it.first },
+        STATUSES.map { it.first }.toTypedArray(),
     ) {
         fun selectedSlug(): String? {
             val idx = state ?: 0
