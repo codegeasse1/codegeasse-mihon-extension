@@ -372,15 +372,7 @@ jobs:
           PY
 
       - name: Build every extension debug APKs
-        run: set -o pipefail; gradle assembleDebug --stacktrace 2>&1 | tee build-error.log
-
-      - name: Upload build log artifact
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-error-log
-          path: build-error.log
-          if-no-files-found: warn
+        run: gradle assembleDebug --stacktrace
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
