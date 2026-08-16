@@ -60,6 +60,7 @@ class Yurivan : HttpSource() {
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
+        coerceInputValues = true
     }
 
     // Supabase tables live in the "yurivan" schema, so every API call
