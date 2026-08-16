@@ -47,6 +47,9 @@ import java.util.TimeZone
  * all requests carry a browser User-Agent + mangak.io Referer, and failed
  * image loads are retried on the site's own fallback host (rx.rzyn.net)
  * exactly like the site's reader does (see imageFallbackInterceptor).
+ * Chapter image requests also send browser-like Accept / Sec-Fetch-* headers
+ * (some CDN zones 400 requests that lack them) and, as a last resort, fall
+ * back to the lax rx.resmk.org zone that is known to accept our client.
  */
 class MangaK : HttpSource() {
 
@@ -66,27 +69,34 @@ class MangaK : HttpSource() {
     // The image CDNs (rx.qvzr*.org / rx.resmk.org) are Cloudflare-gated and
     // intermittently block automated clients. The site's own reader retries a
     // failed image as: original -> +?v=1 -> host swapped to rx.rzyn.net.
-    // Mirror that here so chapter pages and covers still load.
+    // Mirror that here, treating HTML responses (CF block/error pages) as
+    // failures too, and end the chain on the lax rx.resmk.org zone that is
+    // known to accept our client.
     private val imageFallbackInterceptor = Interceptor { chain ->
         val request = chain.request()
         var response = chain.proceed(request)
-        if (response.isSuccessful || !IMAGE_HOST_REGEX.matches(request.url.host)) {
+        if (response.isGoodImage() || !IMAGE_HOST_REGEX.matches(request.url.host)) {
             return@Interceptor response
         }
 
-        response.close()
-        val withV = request.url.newBuilder().addQueryParameter("v", "1").build()
-        response = chain.proceed(request.newBuilder().url(withV).build())
-        if (response.isSuccessful) return@Interceptor response
+        val original = request.url
+        val candidates = buildList {
+            add(original)
+            add(original.newBuilder().addQueryParameter("v", "1").build())
+            if (original.host.startsWith(PAGE_CDN_PREFIX)) {
+                add(original.newBuilder().host(FALLBACK_IMAGE_HOST).build())
+                add(original.newBuilder().host(FALLBACK_IMAGE_HOST).addQueryParameter("v", "1").build())
+                add(original.newBuilder().host(LAX_IMAGE_HOST).build())
+                add(original.newBuilder().host(LAX_IMAGE_HOST).addQueryParameter("v", "1").build())
+            }
+        }.distinctBy { it.toString() }
 
-        response.close()
-        val fallback = request.url.newBuilder().host(FALLBACK_IMAGE_HOST).build()
-        response = chain.proceed(request.newBuilder().url(fallback).build())
-        if (response.isSuccessful) return@Interceptor response
-
-        response.close()
-        val fallbackV = fallback.newBuilder().addQueryParameter("v", "1").build()
-        chain.proceed(request.newBuilder().url(fallbackV).build())
+        for (candidate in candidates.drop(1)) {
+            response.close()
+            response = chain.proceed(request.newBuilder().url(candidate).build())
+            if (response.isGoodImage()) return@Interceptor response
+        }
+        response
     }
 
     override val client: OkHttpClient = network.client.newBuilder()
@@ -99,6 +109,19 @@ class MangaK : HttpSource() {
             .set("Referer", "$baseUrl/")
 
     private fun apiHeaders(): Headers = headersBuilder().build()
+
+    private fun imageHeaders(): Headers = headersBuilder()
+        .set("Accept", IMAGE_ACCEPT)
+        .set("Accept-Language", "en-US,en;q=0.9")
+        .set("Sec-Fetch-Dest", "image")
+        .set("Sec-Fetch-Mode", "no-cors")
+        .set("Sec-Fetch-Site", "cross-site")
+        .build()
+
+    // A Cloudflare block/challenge page is a 200 or 403 text/html body; treat
+    // any non-HTML success as a usable image so fallbacks don't needlessly fire.
+    private fun Response.isGoodImage(): Boolean =
+        isSuccessful && header("Content-Type")?.startsWith("text/html") != true
 
     // ========================== Browse & Search ===========================
 
@@ -243,7 +266,7 @@ class MangaK : HttpSource() {
     }
 
     override fun imageRequest(page: Page): Request =
-        GET(page.imageUrl ?: page.url, apiHeaders())
+        GET(page.imageUrl ?: page.url, imageHeaders())
 
     // ============================== Parsers ===============================
 
@@ -359,6 +382,10 @@ class MangaK : HttpSource() {
         private const val PAGE_LIMIT = 24
         private const val QUERY_LIMIT = 50
         private const val FALLBACK_IMAGE_HOST = "rx.rzyn.net"
+        private const val LAX_IMAGE_HOST = "rx.resmk.org"
+        private const val PAGE_CDN_PREFIX = "rx.qvzr"
+        private const val IMAGE_ACCEPT =
+            "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
 
         private val IMAGE_HOST_REGEX = Regex("rx\\.(qvzr[a-z]|resmk)\\.org")
 
