@@ -1,0 +1,30 @@
+name: lunarx-probe
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe endpoints
+        run: |
+          echo "=== 1. chapters: /api/manga/one-piece WITH origin ==="
+          curl -sS -w "\nHTTP:%{http_code}\n" -H "Origin: https://lunarx.to" https://api.lunarx.to/api/manga/one-piece -o /tmp/m1.json -D /tmp/h1.txt
+          cat /tmp/h1.txt | head -30
+          head -c 2000 /tmp/m1.json; echo
+          echo "=== 2. chapters: same WITHOUT origin ==="
+          curl -sS -w "\nHTTP:%{http_code}\n" https://api.lunarx.to/api/manga/one-piece -o /tmp/m2.json -D /tmp/h2.txt
+          cat /tmp/h2.txt | head -30
+          head -c 2000 /tmp/m2.json; echo
+          echo "=== 3. recently-updated ==="
+          curl -sS -w "\nHTTP:%{http_code}\n" -H "Origin: https://lunarx.to" "https://api.lunarx.to/api/manga/recently-updated?limit=3" -o /tmp/m3.json
+          head -c 3000 /tmp/m3.json; echo
+          echo "=== 4. title ==="
+          curl -sS -w "\nHTTP:%{http_code}\n" -H "Origin: https://lunarx.to" "https://api.lunarx.to/api/manga/title/one-piece" -o /tmp/m4.json
+          head -c 3000 /tmp/m4.json; echo
+          echo "=== 5. guild search POST ==="
+          curl -sS -w "\nHTTP:%{http_code}\n" -H "Origin: https://lunarx.to" -H "Content-Type: application/json" -X POST -d '{"query":"test","limit":3,"page":1}' https://api.lunarx.to/api/guild/search -o /tmp/m5.json
+          head -c 2000 /tmp/m5.json; echo
+          echo "=== 6. raw reader token attempt (bad token) ==="
+          curl -sS -w "\nHTTP:%{http_code}\n" -H "Origin: https://lunarx.to" "https://api.lunarx.to/api/manga/r/AAAA" -o /tmp/m6.json
+          head -c 2000 /tmp/m6.json; echo
+          echo "=== DONE ==="
