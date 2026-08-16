@@ -814,7 +814,7 @@ class LunarX : HttpSource(), ConfigurableSource {
                     't' -> { append('\t'); i += 2 }
                     'r' -> { append('\r'); i += 2 }
                     'b' -> { append('\b'); i += 2 }
-                    'f' -> { append('\f'); i += 2 }
+                    'f' -> { append('\u000C'); i += 2 }
                     'u' -> {
                         val hex = s.substring(i + 2, minOf(i + 6, s.length))
                         append(hex.toIntOrNull(16)?.toChar() ?: '?')
