@@ -1,7 +1,12 @@
 package eu.kanade.tachiyomi.extension.en.mangaball
 
+import android.content.SharedPreferences
+import androidx.preference.PreferenceScreen
+import androidx.preference.SwitchPreferenceCompat
+import codegeasse.utils.getPreferencesLazy
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
+import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -46,12 +51,14 @@ import java.util.TimeZone
  * Reader pages embed the page image URLs in a server-rendered script:
  *     const chapterImages = JSON.parse(`["https://.../001.png", ...]`)
  */
-class MangaBall : HttpSource() {
+class MangaBall : HttpSource(), ConfigurableSource {
 
     override val name = "MangaBall"
     override val baseUrl = "https://mangaball.net"
     override val lang = "en"
     override val supportsLatest = true
+
+    private val preferences: SharedPreferences by getPreferencesLazy()
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -60,6 +67,20 @@ class MangaBall : HttpSource() {
     }
 
     private var csrfToken: String? = null
+
+
+    // ============================== Settings ==============================
+
+    override fun setupPreferenceScreen(screen: PreferenceScreen) {
+        SwitchPreferenceCompat(screen.context).apply {
+            key = SHOW_NSFW_PREF
+            title = "Show 18+ content"
+            summary = "Include adult (18+) titles in popular, latest, search, and chapter lists. Mirrors the site's 18+ toggle."
+            setDefaultValue(true)
+        }.let(screen::addPreference)
+    }
+
+    private fun showNsfw(): Boolean = preferences.getBoolean(SHOW_NSFW_PREF, true)
 
 
     // ============================== CSRF / Session ==============================
@@ -108,6 +129,7 @@ class MangaBall : HttpSource() {
             .set("X-CSRF-TOKEN", csrfToken!!)
             .set("X-Requested-With", "XMLHttpRequest")
             .set("Referer", "$baseUrl/")
+            .set("Cookie", "show18PlusContent=${showNsfw().toString()}")
             .build()
 
         return POST("$baseUrl$path", apiHeaders, form)
@@ -142,6 +164,7 @@ class MangaBall : HttpSource() {
                 "search_type" to "getPopular",
                 "search_limit" to PAGE_SIZE.toString(),
                 "page" to page.toString(),
+                "userSettingsEnabled" to showNsfw().toString(),
             ),
         )
 
@@ -154,6 +177,7 @@ class MangaBall : HttpSource() {
             linkedMapOf(
                 "search_type" to "getRecentlyUpdatedChapter",
                 "page" to page.toString(),
+                "userSettingsEnabled" to showNsfw().toString(),
             ),
         )
 
@@ -191,6 +215,7 @@ class MangaBall : HttpSource() {
                     "filters[originalLanguages]" to "any",
                     "filters[publicationYear]" to "",
                     "filters[publicationStatus]" to "",
+                    "filters[userSettingsEnabled]" to showNsfw().toString(),
                 ),
             )
         }
@@ -200,6 +225,7 @@ class MangaBall : HttpSource() {
             linkedMapOf(
                 "search_type" to "getRecentlyUpdatedChapter",
                 "page" to page.toString(),
+                "userSettingsEnabled" to showNsfw().toString(),
             ),
         )
     }
@@ -308,7 +334,7 @@ class MangaBall : HttpSource() {
             "/api/v1/chapter/chapter-listing-by-title-id/",
             linkedMapOf(
                 "title_id" to titleIdFrom(manga.url),
-                "userSettingsEnabled" to "false",
+                "userSettingsEnabled" to showNsfw().toString(),
             ),
         )
 
@@ -552,6 +578,8 @@ class MangaBall : HttpSource() {
     companion object {
 
         private const val PAGE_SIZE = 20
+
+        private const val SHOW_NSFW_PREF = "show_18_plus"
 
         private val chapterDateFormats = listOf(
             SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT),
