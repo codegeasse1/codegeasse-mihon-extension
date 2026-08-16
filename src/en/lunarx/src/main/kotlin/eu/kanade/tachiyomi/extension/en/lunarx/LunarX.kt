@@ -720,17 +720,11 @@ class LunarX : HttpSource(), ConfigurableSource {
         t.stackTrace.take(6).joinToString(" | ") { it.toString() }
 
     private fun extractKeys(html: String): Pair<String, String>? {
-        val pushes = mutableListOf<String>()
-        for (m in FLIGHT_PUSH_RE.findAll(html)) {
-            pushes.add(unescapeJsonString(m.groupValues[1]))
-        }
+        val pushes = extractPushes(html)
         if (pushes.isEmpty()) return null
         val combined = pushes.joinToString("")
 
-        val props = LinkedHashMap<String, String>()
-        for (m in KV_PAIR_RE.findAll(combined)) {
-            props.putIfAbsent(m.groupValues[1], m.groupValues[2])
-        }
+        val props = extractKv(combined)
 
         for ((name, value) in props) {
             val entry = tryStage1(name, value) ?: continue
@@ -739,6 +733,94 @@ class LunarX : HttpSource(), ConfigurableSource {
             return keys
         }
         return null
+    }
+
+    // The flight-payload regexes catastrophically backtrack on large pages
+    // (StackOverflowError in the JVM regex engine), so extraction is done
+    // with linear single-pass scanners instead.
+
+    private fun extractPushes(html: String): List<String> {
+        val out = ArrayList<String>()
+        val marker = "self.__next_f.push(["
+        var i = 0
+        while (true) {
+            val start = html.indexOf(marker, i)
+            if (start < 0) break
+            val quote = html.indexOf('"', start + marker.length)
+            if (quote < 0) break
+            val sb = StringBuilder()
+            var j = quote + 1
+            var closed = false
+            while (j < html.length) {
+                val c = html[j]
+                if (c == '\\') {
+                    sb.append(c)
+                    if (j + 1 < html.length) {
+                        sb.append(html[j + 1])
+                        j++
+                    }
+                } else if (c == '"') {
+                    closed = true
+                    break
+                } else {
+                    sb.append(c)
+                }
+                j++
+            }
+            if (closed) out.add(unescapeJsonString(sb.toString()))
+            i = j + 1
+        }
+        return out
+    }
+
+    private fun extractKv(combined: String): LinkedHashMap<String, String> {
+        val props = LinkedHashMap<String, String>()
+        val n = combined.length
+        var i = 0
+        while (i < n) {
+            if (combined[i] != '"') {
+                i++
+                continue
+            }
+            var j = i + 1
+            while (j < n && combined[j] != '"' && combined[j] != '\\' &&
+                combined[j] != '\n' && combined[j] != '\r'
+            ) {
+                j++
+            }
+            if (j >= n || combined[j] != '"') {
+                i++
+                continue
+            }
+            val key = combined.substring(i + 1, j)
+            if (key.isEmpty() || key.length > 40 ||
+                !key.all { it.isLetterOrDigit() || it == '_' }
+            ) {
+                i++
+                continue
+            }
+            j++
+            if (j >= n || combined[j] != ':') {
+                i = j
+                continue
+            }
+            j++
+            if (j >= n || combined[j] != '"') {
+                i = j
+                continue
+            }
+            j++
+            val vStart = j
+            while (j < n && combined[j] != '"' && combined[j] != '\\') j++
+            if (j >= n || combined[j] != '"') {
+                i = vStart
+                continue
+            }
+            val value = combined.substring(vStart, j)
+            props.putIfAbsent(key, value)
+            i = j + 1
+        }
+        return props
     }
 
     private data class SealedEntry(
@@ -941,11 +1023,6 @@ class LunarX : HttpSource(), ConfigurableSource {
         private val DEFAULT_KEYS: Pair<String, String> =
             "4bLRZvIqOP4AaCkbVq2WclLZsUdxjvaYeai81xZgKbxv28z43CN5oQxgz" to
                 "HW8uYR0TmrH1fA6oHJpv72LNYbYeDcE7Vh7GWaJim7SyrMfENJ0eUE9ETJdlOXbOdDgyF9jUt4r"
-
-        private val FLIGHT_PUSH_RE =
-            Regex("self\\.__next_f\\.push\\(\\[[^\\]]*?\"((?:\\\\.|[^\"\\\\])*)\"\\]\\)")
-        private val KV_PAIR_RE =
-            Regex("\"([A-Za-z0-9_]{1,40})\":\"([^\"\\\\]{1,400})\"")
 
         private val chapterDateFormats = listOf(
             SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.ROOT),
