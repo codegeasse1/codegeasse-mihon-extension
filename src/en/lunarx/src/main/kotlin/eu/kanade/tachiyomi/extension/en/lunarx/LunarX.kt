@@ -628,7 +628,7 @@ class LunarX : HttpSource(), ConfigurableSource {
         state = 0,
     ) {
         val selectedValue: String
-            get() = when (state?.index ?: 0) {
+            get() = when (state) {
                 1 -> "ONGOING"
                 2 -> "COMPLETED"
                 3 -> "HIATUS"
