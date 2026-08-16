@@ -35,7 +35,6 @@ import java.security.KeyPairGenerator
 import java.security.MessageDigest
 import java.security.PrivateKey
 import java.security.Signature
-import java.security.interfaces.ECPrivateKey
 import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.PKCS8EncodedKeySpec
@@ -291,7 +290,7 @@ class LunarX : HttpSource(), ConfigurableSource {
 
     // ============================== Pages ==============================
 
-    override fun getChapterUrl(manga: SManga, chapter: SChapter): String =
+    override fun getChapterUrl(chapter: SChapter): String =
         "$baseUrl${chapter.url}"
 
     override fun pageListRequest(chapter: SChapter): Request {
@@ -411,7 +410,6 @@ class LunarX : HttpSource(), ConfigurableSource {
         "COMPLETED", "FINISHED" -> SManga.COMPLETED
         "HIATUS", "ON HIATUS", "PAUSED" -> SManga.ON_HIATUS
         "CANCELLED", "CANCELED" -> SManga.CANCELLED
-        "UPCOMING", "NOT_YET_RELEASED" -> SManga.NOT_YET_RELEASED
         else -> SManga.UNKNOWN
     }
 
@@ -627,7 +625,7 @@ class LunarX : HttpSource(), ConfigurableSource {
     private class StatusFilter : Filter.Select<String>(
         "Status",
         arrayOf("Any", "Ongoing", "Completed", "Hiatus", "Cancelled"),
-        initialSelection = 0,
+        state = 0,
     ) {
         val selectedValue: String
             get() = when (state?.index ?: 0) {
