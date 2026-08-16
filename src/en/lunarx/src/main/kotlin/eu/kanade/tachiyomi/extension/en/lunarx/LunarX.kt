@@ -25,6 +25,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
@@ -85,6 +86,12 @@ class LunarX : HttpSource(), ConfigurableSource {
     override val supportsLatest = true
 
     private val apiUrl = "https://api.lunarx.to"
+
+    // Requests we must issue ourselves (key extraction, the revalidate
+    // retry) use a plain OkHttpClient instead of `network.client`: the
+    // latter is resolved through the host app's Injekt graph and is
+    // unavailable on JVM hosts like Tachidesk/Suwayomi.
+    private val directClient: OkHttpClient by lazy { OkHttpClient() }
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -309,8 +316,12 @@ class LunarX : HttpSource(), ConfigurableSource {
     private var lastKeys: Pair<String, String> = DEFAULT_KEYS
 
     override fun pageListRequest(chapter: SChapter): Request {
-        lastChapterUrl = chapter.url
-        return buildReaderRequest(chapter.url)
+        try {
+            lastChapterUrl = chapter.url
+            return buildReaderRequest(chapter.url)
+        } catch (t: Throwable) {
+            throw IOException("LunarX pageListRequest: ${t::class.simpleName} :: ${briefTrace(t)}", t)
+        }
     }
 
     private fun buildReaderRequest(path: String): Request {
@@ -340,11 +351,20 @@ class LunarX : HttpSource(), ConfigurableSource {
     }
 
     override fun pageListParse(response: Response): List<Page> {
+        try {
+            return pageListParseInner(response)
+        } catch (t: Throwable) {
+            if (t is IOException) throw t
+            throw IOException("LunarX pageListParse: ${t::class.simpleName} :: ${briefTrace(t)}", t)
+        }
+    }
 
+    private fun pageListParseInner(response: Response): List<Page> {
         var resp = response
 
         repeat(MAX_READER_ATTEMPTS) { attempt ->
-            val body = resp.body!!.string()
+            val body = resp.body?.string()
+                ?: throw IOException("LunarX null response body (HTTP ${resp.code})")
             Log.d("LunarX", "reader attempt ${attempt + 1}: HTTP ${resp.code} -> ${body.take(1200)}")
 
             if (!resp.isSuccessful) {
@@ -407,7 +427,11 @@ class LunarX : HttpSource(), ConfigurableSource {
 
             if (attempt < MAX_READER_ATTEMPTS - 1) {
                 resp.close()
-                resp = network.client.newCall(buildReaderRequest(lastChapterUrl)).execute()
+                try {
+                    resp = directClient.newCall(buildReaderRequest(lastChapterUrl)).execute()
+                } catch (t: Throwable) {
+                    throw IOException("LunarX retry request failed: ${t::class.simpleName} :: ${briefTrace(t)}", t)
+                }
             } else {
                 throw IOException(
                     "LunarX kept asking to revalidate the chapter request. " +
@@ -674,12 +698,26 @@ class LunarX : HttpSource(), ConfigurableSource {
 
     private fun fetchKeysFromPage(slug: String, num: String): Pair<String, String>? {
         val req = GET("$baseUrl/manga/$slug/$num", apiHeaders())
-        val resp = network.client.newCall(req).execute()
+        val resp = try {
+            directClient.newCall(req).execute()
+        } catch (t: Throwable) {
+            Log.d("LunarX", "keys page fetch threw ${t::class.simpleName}: ${t.message}")
+            return null
+        }
         resp.use {
-            if (!it.isSuccessful) return null
-            return extractKeys(it.body!!.string())
+            if (!it.isSuccessful) {
+                Log.d("LunarX", "keys page HTTP ${it.code}")
+                return null
+            }
+            val b = it.body?.string() ?: return null
+            val k = extractKeys(b)
+            if (k == null) Log.d("LunarX", "key extraction failed; page len ${b.length}")
+            return k
         }
     }
+
+    private fun briefTrace(t: Throwable): String =
+        t.stackTrace.take(6).joinToString(" | ") { it.toString() }
 
     private fun extractKeys(html: String): Pair<String, String>? {
         val pushes = mutableListOf<String>()

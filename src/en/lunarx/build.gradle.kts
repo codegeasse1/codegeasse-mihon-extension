@@ -7,7 +7,7 @@ plugins {
 // --- Extension metadata -----------------------------------------------
 val extName = "LunarX"
 val extClass = ".LunarX"
-val extVersionCode = 4
+val extVersionCode = 5
 val isNsfw = true
 // ----------------------------------------------------------------------
 
