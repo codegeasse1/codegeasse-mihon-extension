@@ -374,7 +374,7 @@ private class OrderByFilter : Filter.Select<String>(
     "Sort By",
     arrayOf("Relevance", "Latest", "A-Z", "Rating", "Trending", "Most Views", "New"),
 ) {
-    private val values = arrayOf(
+    private val vals = arrayOf(
         "Relevance" to "",
         "Latest" to "latest",
         "A-Z" to "alphabet",
@@ -385,7 +385,7 @@ private class OrderByFilter : Filter.Select<String>(
     )
 
     val selected: String
-        get() = values.getOrNull(state ?: 0)?.second ?: ""
+        get() = vals.getOrNull(state ?: 0)?.second ?: ""
 }
 
 private class Status(name: String, val id: String) : Filter.CheckBox(name)
