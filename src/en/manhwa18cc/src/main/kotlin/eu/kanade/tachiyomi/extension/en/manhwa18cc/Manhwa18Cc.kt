@@ -85,7 +85,8 @@ class Manhwa18Cc : HttpSource() {
         parseList(response)
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        val genre = filters.firstOrNull { it is GenreList } as GenreList?
+        val genreFilter = filters.filterIsInstance<GenreList>().firstOrNull()
+        val genre = genreFilter
             ?.state
             ?.filter { it.isIncluded() }
             ?.joinToString(",") { it.key }
