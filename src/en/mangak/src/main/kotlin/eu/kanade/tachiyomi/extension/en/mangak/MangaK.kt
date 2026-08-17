@@ -20,6 +20,7 @@ import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
@@ -43,13 +44,12 @@ import java.util.TimeZone
  * ("/slug#<id>"), so details/chapters hit the API directly. A manga opened
  * from a bare URL falls back to its SSR page, which carries the same id.
  *
- * Image CDNs (rx.resmk.org covers, rx.qvzr*.org pages) are Cloudflare-gated:
- * all requests carry a browser User-Agent + mangak.io Referer, and failed
- * image loads are retried on the site's own fallback host (rx.rzyn.net)
- * exactly like the site's reader does (see imageFallbackInterceptor).
- * Chapter image requests also send browser-like Accept / Sec-Fetch-* headers
- * (some CDN zones 400 requests that lack them) and, as a last resort, fall
- * back to the lax rx.resmk.org zone that is known to accept our client.
+ * Image CDNs (rx.qvzr*.org) are Cloudflare-gated. All requests carry a browser
+ * User-Agent + mangak.io Referer + Origin (the exact set keiyoushi's MangaK
+ * uses; Sec-Fetch-* headers trigger the CDN's hotlink WAF and are avoided).
+ * Failed image loads are retried like the site's own reader: original ->
+ * +?v=1 -> host swapped to rx.rzyn.net (then rx.resmk.org), see
+ * imageFallbackInterceptor.
  */
 class MangaK : HttpSource() {
 
@@ -74,10 +74,7 @@ class MangaK : HttpSource() {
     // known to accept our client.
     private val imageFallbackInterceptor = Interceptor { chain ->
         val request = chain.request()
-        var response = chain.proceed(request)
-        if (response.isGoodImage() || !IMAGE_HOST_REGEX.matches(request.url.host)) {
-            return@Interceptor response
-        }
+        if (!IMAGE_HOST_REGEX.matches(request.url.host)) return@Interceptor chain.proceed(request)
 
         val original = request.url
         val candidates = buildList {
@@ -91,12 +88,16 @@ class MangaK : HttpSource() {
             }
         }.distinctBy { it.toString() }
 
-        for (candidate in candidates.drop(1)) {
-            response.close()
-            response = chain.proceed(request.newBuilder().url(candidate).build())
+        for (candidate in candidates) {
+            val response = try {
+                chain.proceed(request.newBuilder().url(candidate).build())
+            } catch (e: Exception) {
+                null
+            } ?: continue
             if (response.isGoodImage()) return@Interceptor response
+            response.close()
         }
-        response
+        throw IOException("Failed to load MangaK image on all hosts: ${request.url}")
     }
 
     override val client: OkHttpClient = network.client.newBuilder()
@@ -107,16 +108,9 @@ class MangaK : HttpSource() {
         super.headersBuilder()
             .set("User-Agent", BROWSER_UA)
             .set("Referer", "$baseUrl/")
+            .set("Origin", baseUrl)
 
     private fun apiHeaders(): Headers = headersBuilder().build()
-
-    private fun imageHeaders(): Headers = headersBuilder()
-        .set("Accept", IMAGE_ACCEPT)
-        .set("Accept-Language", "en-US,en;q=0.9")
-        .set("Sec-Fetch-Dest", "image")
-        .set("Sec-Fetch-Mode", "no-cors")
-        .set("Sec-Fetch-Site", "cross-site")
-        .build()
 
     // A Cloudflare block/challenge page is a 200 or 403 text/html body; treat
     // any non-HTML success as a usable image so fallbacks don't needlessly fire.
@@ -266,7 +260,7 @@ class MangaK : HttpSource() {
     }
 
     override fun imageRequest(page: Page): Request =
-        GET(page.imageUrl ?: page.url, imageHeaders())
+        GET(page.imageUrl ?: page.url, apiHeaders())
 
     // ============================== Parsers ===============================
 
@@ -384,8 +378,6 @@ class MangaK : HttpSource() {
         private const val FALLBACK_IMAGE_HOST = "rx.rzyn.net"
         private const val LAX_IMAGE_HOST = "rx.resmk.org"
         private const val PAGE_CDN_PREFIX = "rx.qvzr"
-        private const val IMAGE_ACCEPT =
-            "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
 
         private val IMAGE_HOST_REGEX = Regex("rx\\.(qvzr[a-z]|resmk)\\.org")
 
