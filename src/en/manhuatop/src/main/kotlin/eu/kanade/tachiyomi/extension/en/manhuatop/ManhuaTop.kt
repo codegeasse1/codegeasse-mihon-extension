@@ -372,7 +372,9 @@ class ManhuaTop : HttpSource() {
 
 private class OrderByFilter : Filter.Select<String>(
     "Sort By",
-    arrayOf(
+    arrayOf("Relevance", "Latest", "A-Z", "Rating", "Trending", "Most Views", "New"),
+) {
+    private val values = arrayOf(
         "Relevance" to "",
         "Latest" to "latest",
         "A-Z" to "alphabet",
@@ -380,8 +382,8 @@ private class OrderByFilter : Filter.Select<String>(
         "Trending" to "trending",
         "Most Views" to "views",
         "New" to "new-manga",
-    ),
-) {
+    )
+
     val selected: String
         get() = values.getOrNull(state ?: 0)?.second ?: ""
 }
