@@ -2,7 +2,7 @@
 
 # Codegeasse Mihon Extensions
 
-**A self-hosted extension repository for Mihon / Aniyomi / Tachiyomi.** The extensions here are built directly in this repository — not forked or copied from Keiyoushi or any other community repo.
+**A self-hosted extension repository for Mihon / Aniyomi / Tachiyomi.**
 
 </div>
 
@@ -55,7 +55,7 @@ Everything installs as normal Mihon extensions and auto-updates whenever the rep
 
 ## 🛠 How this repo works
 
-- **Not a fork.** No Keiyoushi / Aniyomi / Tachiyomi source code is included — each extension is written and maintained here.
+- Each extension is a standalone module written and maintained in this repository.
 - Every push to `main` is compiled by GitHub Actions. The workflow builds each extension module and publishes the extension index (`index.json`), the APKs (`apk/`) and icons (`icon/`) to the **`repo`** branch — that's what your reader fetches when you add the repository above.
 - Want a new site? Open an issue and it may be added.
 
