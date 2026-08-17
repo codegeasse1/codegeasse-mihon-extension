@@ -7,7 +7,7 @@ plugins {
 // --- Extension metadata -----------------------------------------------
 val extName = "MangaBall"
 val extClass = ".MangaBall"
-val extVersionCode = 3
+val extVersionCode = 4
 val isNsfw = true
 // ----------------------------------------------------------------------
 

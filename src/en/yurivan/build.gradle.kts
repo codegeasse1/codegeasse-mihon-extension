@@ -7,7 +7,7 @@ plugins {
 // --- Extension metadata -----------------------------------------------
 val extName = "Yurivan"
 val extClass = ".Yurivan"
-val extVersionCode = 5
+val extVersionCode = 6
 val isNsfw = true
 // ----------------------------------------------------------------------
 
