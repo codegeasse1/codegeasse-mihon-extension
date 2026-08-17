@@ -65,4 +65,6 @@ Each extension is its own Gradle module under `src/<lang>/<name>/` and extends `
 
 ## ⚖️ Disclaimer
 
-This repository is not affiliated with, endorsed by, or a part of Keiyoushi, Mihon, Aniyomi or Tachiyomi. All extension names, logos and content belong to their respective owners.
+All manga content is hosted on the source websites listed above — this repo only provides the extension code that connects to and reads those already-public sites. We don't host, upload, or store any content, and we don't own any of the source websites. All titles, logos and content belong to their respective owners.
+
+This repository is not affiliated with, endorsed by, or a part of Keiyoushi, Mihon, Aniyomi or Tachiyomi.
