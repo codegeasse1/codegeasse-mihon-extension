@@ -147,6 +147,9 @@ class ManhuaTop : HttpSource() {
 
     // =========================== Manga Details ===========================
 
+    override fun getMangaUrl(manga: SManga): String =
+        if (manga.url.startsWith("http")) manga.url else baseUrl + manga.url
+
     override fun mangaDetailsRequest(manga: SManga): Request =
         GET(getMangaUrl(manga), headers)
 
