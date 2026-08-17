@@ -37,8 +37,10 @@ import java.util.Locale
  * page (hosted on the shadowabyss.com CDN, which answers requests carrying
  * a browser User-Agent + Referer from kuramanga.com).
  *
- *     Popular : homepage "Popular Today" carousel (section > .sp-card)
- *     Latest  : homepage ".update-row" grid (21 rows)
+ *     Popular : homepage "Popular Today" carousel (section > .sp-card);
+ *               page > 1 continues through the full catalog via AJAX ids
+ *     Latest  : homepage ".update-row" grid (21 rows); page > 1 continues
+ *               through the full catalog via AJAX ids
  *     Search  : AJAX ids -> pick (18 per page)
  *     Details : /<slug>/ -> h1.manga-title, .mp-byline, .genre-list,
  *               .mp-synopsis .summary-inner, .mp-status
@@ -72,20 +74,30 @@ class KuraManga : HttpSource() {
         StatusFilter(),
     )
 
-    override fun popularMangaRequest(page: Int): Request =
-        GET(baseUrl, apiHeaders())
-
-    override fun popularMangaParse(response: Response): MangasPage {
-        val doc = response.asJsoup()
-        return MangasPage(parsePopular(doc), hasNextPage = false)
+    override fun popularMangaRequest(page: Int): Request {
+        if (page <= 1) return GET(baseUrl, apiHeaders())
+        return browseRequest(page)
     }
 
-    override fun latestUpdatesRequest(page: Int): Request =
-        GET(baseUrl, apiHeaders())
+    override fun popularMangaParse(response: Response): MangasPage {
+        if (isHomepage(response)) {
+            val doc = response.asJsoup()
+            return MangasPage(parsePopular(doc), hasNextPage = true)
+        }
+        return parseBrowseResponse(response)
+    }
+
+    override fun latestUpdatesRequest(page: Int): Request {
+        if (page <= 1) return GET(baseUrl, apiHeaders())
+        return browseRequest(page)
+    }
 
     override fun latestUpdatesParse(response: Response): MangasPage {
-        val doc = response.asJsoup()
-        return MangasPage(parseLatest(doc), hasNextPage = false)
+        if (isHomepage(response)) {
+            val doc = response.asJsoup()
+            return MangasPage(parseLatest(doc), hasNextPage = true)
+        }
+        return parseBrowseResponse(response)
     }
 
     private var searchTotal = 0
@@ -107,10 +119,26 @@ class KuraManga : HttpSource() {
         if (statusSlug != null) params += "status=$statusSlug"
         val queryStr = params.joinToString("&")
 
-        val ids = mutableListOf<String>()
+        return browseRequest(page, queryStr)
+    }
+
+    override fun searchMangaParse(response: Response): MangasPage =
+        parseBrowseResponse(response)
+
+    private fun isHomepage(response: Response): Boolean =
+        response.request.url.queryParameter("pick") == null
+
+    private fun browseRequest(page: Int, queryStr: String = ""): Request {
         searchPage = page
         searchTotal = 0
+        val ids = fetchAllIds(queryStr)
+        val slice = ids.drop((page - 1) * PAGE_SIZE).take(PAGE_SIZE)
+        val pickUrl = "$baseUrl/search?ajax=1&pick=${slice.joinToString(",")}"
+        return GET(pickUrl, apiHeaders())
+    }
 
+    private fun fetchAllIds(queryStr: String): List<String> {
+        val ids = mutableListOf<String>()
         runCatching {
             directClient.newCall(GET("$baseUrl/search?ajax=1&ids=1&$queryStr", apiHeaders()))
                 .execute()
@@ -123,13 +151,10 @@ class KuraManga : HttpSource() {
                 }
             }
         }
-
-        val slice = ids.drop((page - 1) * PAGE_SIZE).take(PAGE_SIZE)
-        val pickUrl = "$baseUrl/search?ajax=1&pick=${slice.joinToString(",")}"
-        return GET(pickUrl, apiHeaders())
+        return ids
     }
 
-    override fun searchMangaParse(response: Response): MangasPage {
+    private fun parseBrowseResponse(response: Response): MangasPage {
         val body = response.body?.string() ?: return MangasPage(emptyList(), false)
         val root = runCatching { gson.fromJson(body, JsonObject::class.java) }.getOrNull()
         val data = root?.getAsJsonArray("data") ?: JsonArray()
