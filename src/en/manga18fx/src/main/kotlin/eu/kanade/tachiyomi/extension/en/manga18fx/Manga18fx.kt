@@ -34,9 +34,10 @@ import java.net.URLEncoder
  *               div.post-content_item:has(h5:contains(Status)), .panel-story-
  *               description .dsct; chapters (newest first) in
  *               ul.row-content-chapter li.a-h a.chapter-name
- *     Chapter : /manga/<slug>/chapter-<n> -> div.read-content img (the page
- *               images carry an /online/ URL; the related-manga thumbnails
- *               in the same container are filtered out)
+ *     Chapter : /manga/<slug>/chapter-<n> -> div.read-content img. Page images
+ *               live on img*.manga18fx.com under either an /online/ path or an
+ *               /uploads/ path — accept any http(s) image here; the related-
+ *               manga thumbnails sit outside .read-content and are not matched)
  *
  * Pagination is Bootstrap-style: hasNextPage = ul.pagination li.next a (a
  * disabled next has no <a>). The site hosts uncensored/adult titles too.
@@ -185,7 +186,7 @@ class Manga18fx : HttpSource() {
         val chapterUrl = response.request.url.toString()
         return document.select(".read-content img").mapIndexedNotNull { index, element ->
             val imageUrl = imageFromElement(element)
-            if (imageUrl.isNullOrBlank() || !imageUrl.contains("/online/")) null
+            if (imageUrl.isNullOrBlank()) null
             else Page(index, chapterUrl, imageUrl)
         }
     }
