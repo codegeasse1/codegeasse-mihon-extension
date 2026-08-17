@@ -50,6 +50,7 @@ Everything installs as normal Mihon extensions and auto-updates whenever the rep
 | Pornhwa | [pornhwa.pro](https://pornhwa.pro) | `eu.kanade.tachiyomi.extension.en.pornhwa` |
 | The Blank | [theblank.net](https://theblank.net) | `eu.kanade.tachiyomi.extension.en.theblank` |
 | Toonily | [toonily.com](https://toonily.com) | `eu.kanade.tachiyomi.extension.en.toonily` |
+| ToonTop | [toontop.io](https://toontop.io) | `eu.kanade.tachiyomi.extension.en.toontop` |
 | Yurivan | [yurivan.com](https://www.yurivan.com) | `eu.kanade.tachiyomi.extension.en.yurivan` |
 
 > The index also carries a placeholder **Example** extension (`eu.kanade.tachiyomi.extension.en.example`) used for testing — safe to ignore.
