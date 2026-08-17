@@ -37,6 +37,7 @@ Everything installs as normal Mihon extensions and auto-updates whenever the rep
 | Kagane | [kagane.to](https://kagane.to) | `eu.kanade.tachiyomi.extension.en.kagane` |
 | KuraManga | [kuramanga.com](https://kuramanga.com) | `eu.kanade.tachiyomi.extension.en.kuramanga` |
 | LunarX | [lunarx.to](https://lunarx.to) | `eu.kanade.tachiyomi.extension.en.lunarx` |
+| Manga18fx | [manga18fx.com](https://manga18fx.com) | `eu.kanade.tachiyomi.extension.en.manga18fx` |
 | MangaBall | [mangaball.net](https://mangaball.net) | `eu.kanade.tachiyomi.extension.en.mangaball` |
 | MangaHub | [mangahub.io](https://mangahub.io) | `eu.kanade.tachiyomi.extension.en.mangahub` |
 | MangaK | [mangak.io](https://mangak.io) | `eu.kanade.tachiyomi.extension.en.mangak` |
