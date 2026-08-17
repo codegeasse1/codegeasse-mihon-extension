@@ -191,7 +191,7 @@ class ManhwaRead : HttpSource() {
 
     override fun pageListParse(response: Response): List<Page> {
         val chapterUrl = response.request.url.toString()
-        val html = response.body.string()
+        val html = response.body?.string() ?: throw IOException("Empty response body")
         val chapterData = CHAPTER_DATA_REGEX.find(html)?.groupValues?.get(1)
             ?: throw IOException("Chapter data not found")
         val json = try {
