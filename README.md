@@ -44,6 +44,7 @@ Everything installs as normal Mihon extensions and auto-updates whenever the rep
 | Manhwa18 | [manhwa18.net](https://manhwa18.net) | `eu.kanade.tachiyomi.extension.en.manhwa18` |
 | Manhwa18CC | [manhwa18.cc](https://manhwa18.cc) | `eu.kanade.tachiyomi.extension.en.manhwa18cc` |
 | ManhwaHub | [manhwahub.net](https://manhwahub.net) | `eu.kanade.tachiyomi.extension.en.manhwahub` |
+| ManhwaRead | [manhwaread.com](https://manhwaread.com) | `eu.kanade.tachiyomi.extension.en.manhwaread` |
 | The Blank | [theblank.net](https://theblank.net) | `eu.kanade.tachiyomi.extension.en.theblank` |
 | Toonily | [toonily.com](https://toonily.com) | `eu.kanade.tachiyomi.extension.en.toonily` |
 | Yurivan | [yurivan.com](https://www.yurivan.com) | `eu.kanade.tachiyomi.extension.en.yurivan` |
