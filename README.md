@@ -42,6 +42,7 @@ Everything installs as normal Mihon extensions and auto-updates whenever the rep
 | MangaK | [mangak.io](https://mangak.io) | `eu.kanade.tachiyomi.extension.en.mangak` |
 | ManhuaTop | [manhuatop.org](https://manhuatop.org) | `eu.kanade.tachiyomi.extension.en.manhuatop` |
 | Manhwa18 | [manhwa18.net](https://manhwa18.net) | `eu.kanade.tachiyomi.extension.en.manhwa18` |
+| Manhwa18CC | [manhwa18.cc](https://manhwa18.cc) | `eu.kanade.tachiyomi.extension.en.manhwa18cc` |
 | ManhwaHub | [manhwahub.net](https://manhwahub.net) | `eu.kanade.tachiyomi.extension.en.manhwahub` |
 | The Blank | [theblank.net](https://theblank.net) | `eu.kanade.tachiyomi.extension.en.theblank` |
 | Toonily | [toonily.com](https://toonily.com) | `eu.kanade.tachiyomi.extension.en.toonily` |
