@@ -1,106 +1,68 @@
-# Mihon / Aniyomi extension template
+<div align="center">
 
-A minimal, self-contained repo that compiles a Mihon (or Aniyomi) source
-extension into an installable APK via GitHub Actions — no Android Studio
-required.
+# Codegeasse Mihon Extensions
 
-## Before you start — read this
+**A self-hosted extension repository for Mihon / Aniyomi / Tachiyomi.** The extensions here are built directly in this repository — not forked or copied from Keiyoushi or any other community repo.
 
-There are two different ways people build extensions for Mihon/Aniyomi:
+</div>
 
-1. **Contribute to the shared community repo.** In practice, almost all
-   real-world manga extensions for Mihon live in one big multi-module repo,
-   [`keiyoushi/extensions-source`](https://github.com/keiyoushi/extensions-source)
-   (Aniyomi's anime sources have an equivalent shared repo). That repo has
-   its own generator script, shared conventions, and CI that builds and
-   publishes an index. **If you want your extension included in the default
-   repo list users add in the app, this is the real path** — open an issue
-   or PR there.
-2. **Self-host your own extension repo** (what this template does). Useful
-   for a private/personal source, something you don't want to submit
-   upstream, or just learning how the pieces fit together. You build your
-   own APK(s) and, optionally, your own repo index, and users add your
-   repo's URL manually in the app.
+---
 
-This template is for path 2. It uses the same `extensions-lib` stub
-library and manifest metadata the app actually looks for, so a real
-extension built with it will load correctly once installed — but it's a
-simplified, single-repo version of the build setup, not a copy of the
-community repo's internal tooling (which relies on custom Gradle
-convention plugins not published anywhere else).
+## 📥 Add this repo to your reader
 
-## Structure
+Works with **Mihon**, **Aniyomi**, **Tachiyomi**, **Nekoread** and any other reader that loads Mihon/Tachiyomi-style extensions.
+
+1. Open your reader.
+2. Go to **Settings → Extensions** (in Mihon/Aniyomi: open **Browse → Extensions**, tap the **⋮ (three-dot) menu** in the top right, then **Extension repos**).
+3. Tap **+** and paste this URL:
 
 ```
-.
-├── build.gradle.kts              # root Gradle config
-├── settings.gradle.kts           # registers each extension module
-├── gradle.properties             # shared extensions-lib version
-├── .github/workflows/build.yml   # CI: compiles every module, uploads APKs
-└── src/
-    └── en/
-        └── example/               # one extension = one module
-            ├── build.gradle.kts
-            └── src/main/
-                ├── AndroidManifest.xml
-                └── kotlin/.../Example.kt
+https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/index.json
 ```
 
-Each extension is its own Gradle module under `src/<lang>/<name>/`. Add a
-new source by copying the `src/en/example` folder, renaming the package,
-class, and manifest values, and adding a line for it in
-`settings.gradle.kts`.
+> Alternative form (repo base URL, also accepted):
+> ```
+> https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo
+> ```
 
-## Writing the actual source
+4. Back in the Extensions list the **Codegeasse** repo appears — install whichever sources you want.
 
-`Example.kt` extends `HttpSource` (from `extensions-lib`) and stubs out the
-methods Mihon calls: popular/latest/search listing, manga details, chapter
-list, and page list. Replace the CSS selectors and URLs with the real
-target site's structure. Useful references while you write it:
+Everything installs as normal Mihon extensions and auto-updates whenever the repo is refreshed in the app.
 
-- Browse existing sources in `keiyoushi/extensions-source` for real-world
-  examples of `HttpSource`/`ParsedHttpSource` implementations.
-- The `extensions-lib` interfaces: https://github.com/mihonapp/tachiyomix
-  (Mihon's extension stub library) and
-  https://github.com/tachiyomiorg/extensions-lib (original Tachiyomi lib
-  Mihon's is based on).
+## 📚 Extensions in this repo
 
-For an **Aniyomi** anime source, the same idea applies but you extend
-`AnimeHttpSource` instead of `HttpSource`, with `SAnime`/`SEpisode`/
-`Video` in place of `SManga`/`SChapter`/`Page`.
+| Extension | Source site | Package |
+|---|---|---|
+| Comix | [comix.to](https://comix.to) | `eu.kanade.tachiyomi.extension.en.comix` |
+| Kagane | [kagane.to](https://kagane.to) | `eu.kanade.tachiyomi.extension.en.kagane` |
+| KuraManga | [kuramanga.com](https://kuramanga.com) | `eu.kanade.tachiyomi.extension.en.kuramanga` |
+| LunarX | [lunarx.to](https://lunarx.to) | `eu.kanade.tachiyomi.extension.en.lunarx` |
+| MangaBall | [mangaball.net](https://mangaball.net) | `eu.kanade.tachiyomi.extension.en.mangaball` |
+| MangaK | [mangak.io](https://mangak.io) | `eu.kanade.tachiyomi.extension.en.mangak` |
+| Manhwa18 | [manhwa18.net](https://manhwa18.net) | `eu.kanade.tachiyomi.extension.en.manhwa18` |
+| ManhwaHub | [manhwahub.net](https://manhwahub.net) | `eu.kanade.tachiyomi.extension.en.manhwahub` |
+| The Blank | [theblank.net](https://theblank.net) | `eu.kanade.tachiyomi.extension.en.theblank` |
+| Toonily | [toonily.com](https://toonily.com) | `eu.kanade.tachiyomi.extension.en.toonily` |
+| Yurivan | [yurivan.com](https://www.yurivan.com) | `eu.kanade.tachiyomi.extension.en.yurivan` |
 
-## Building
+> The index also carries a placeholder **Example** extension (`eu.kanade.tachiyomi.extension.en.example`) used for testing — safe to ignore.
 
-**Locally** (needs JDK 17 + Android SDK):
-```bash
-gradle assembleDebug
-```
-The APK lands in `src/en/example/build/outputs/apk/debug/`.
+## 🧩 Compatibility
 
-**On GitHub**: push to `main` (or open a PR) and the `build.yml` workflow
-compiles every module and uploads the APKs as a workflow artifact. A second
-job (`release`, runs only on `main`) builds release APKs and stages them
-under `repo/apk/` as an `extension-repo` artifact — a starting point if you
-want to publish a self-hosted repo index later (you'd add a step to
-generate `index.min.json` in the format the app expects).
+- Built on the standard Tachiyomi extension API (`HttpSource`).
+- Compatible with **Mihon**, **Tachiyomi**, **Aniyomi**, **Nekoread**, and any reader that supports Mihon/Tachiyomi-style extension repos.
+- Extensions are **signed consistently** across versions, so updates install over the previous version without reinstalling.
 
-No Gradle wrapper jar is committed — the workflow provisions Gradle itself
-via `gradle/actions/setup-gradle`. For local dev convenience you can
-generate one yourself with `gradle wrapper`.
+## 🛠 How this repo works
 
-## Signing
+- **Not a fork.** No Keiyoushi / Aniyomi / Tachiyomi source code is included — each extension is written and maintained here.
+- Every push to `main` is compiled by GitHub Actions. The workflow builds each extension module and publishes the extension index (`index.json`), the APKs (`apk/`) and icons (`icon/`) to the **`repo`** branch — that's what your reader fetches when you add the repository above.
+- Want a new site? Open an issue and it may be added.
 
-Every build here uses Android's default debug signing, which is fine for
-sideloading and testing. If you plan to publish updates over time (so users
-can upgrade instead of reinstalling), Android requires consistent
-signing across versions — generate one `debug.keystore`, commit it to the
-repo (or store it as a GitHub secret), and point the `release` build type
-at it explicitly.
+## 👩‍💻 For developers
 
-## Verify before you rely on this
+Each extension is its own Gradle module under `src/<lang>/<name>/` and extends `HttpSource` from `extensions-lib`. Add a new one by copying an existing module, renaming the package/class/manifest values, and registering it in `settings.gradle.kts`. The workflow handles building and publishing the index for you.
 
-`extensions-lib`'s version, exact API surface, and required manifest
-metadata do shift over time as the app evolves. Before publishing anything
-real, cross-check `gradle.properties`' `libVersion`, the manifest
-placeholders, and the `HttpSource` method signatures against the current
-`keiyoushi/extensions-source` repo and `mihonapp/tachiyomix`.
+## ⚖️ Disclaimer
+
+This repository is not affiliated with, endorsed by, or a part of Keiyoushi, Mihon, Aniyomi or Tachiyomi. All extension names, logos and content belong to their respective owners.
