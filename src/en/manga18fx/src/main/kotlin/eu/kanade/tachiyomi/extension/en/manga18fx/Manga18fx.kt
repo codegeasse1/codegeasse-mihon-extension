@@ -183,7 +183,7 @@ class Manga18fx : HttpSource() {
     override fun pageListParse(response: Response): List<Page> {
         val document = response.asDocument()
         val chapterUrl = response.request.url.toString()
-        return document.select(".read-content img").mapNotNullIndexed { index, element ->
+        return document.select(".read-content img").mapIndexedNotNull { index, element ->
             val imageUrl = imageFromElement(element)
             if (imageUrl.isNullOrBlank() || !imageUrl.contains("/online/")) null
             else Page(index, chapterUrl, imageUrl)
