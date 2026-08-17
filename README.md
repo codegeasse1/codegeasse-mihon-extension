@@ -41,6 +41,7 @@ Everything installs as normal Mihon extensions and auto-updates whenever the rep
 | MangaBall | [mangaball.net](https://mangaball.net) | `eu.kanade.tachiyomi.extension.en.mangaball` |
 | MangaHub | [mangahub.io](https://mangahub.io) | `eu.kanade.tachiyomi.extension.en.mangahub` |
 | MangaK | [mangak.io](https://mangak.io) | `eu.kanade.tachiyomi.extension.en.mangak` |
+| ManhuaPlus | [manhuaplus.top](https://manhuaplus.top) | `eu.kanade.tachiyomi.extension.en.manhuaplus` |
 | ManhuaTop | [manhuatop.org](https://manhuatop.org) | `eu.kanade.tachiyomi.extension.en.manhuatop` |
 | Manhwa18 | [manhwa18.net](https://manhwa18.net) | `eu.kanade.tachiyomi.extension.en.manhwa18` |
 | Manhwa18CC | [manhwa18.cc](https://manhwa18.cc) | `eu.kanade.tachiyomi.extension.en.manhwa18cc` |
