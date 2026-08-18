@@ -10,10 +10,14 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
+import okhttp3.Dns
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.Jsoup
+import java.net.InetAddress
 import java.net.URLEncoder
+import java.net.UnknownHostException
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
@@ -51,6 +55,15 @@ class Doujiva : HttpSource() {
         .set("Accept", "application/json, text/html, */*")
 
     private val apiUrl = "$baseUrl/api/v1"
+
+    /**
+     * doujiva.com is Cloudflare-hosted; some resolvers (ISP/ad-block DNS) refuse to
+     * resolve it. Try the system DNS first, and fall back to the site's current
+     * Cloudflare Anycast addresses if it returns "no address associated with hostname".
+     */
+    override val client: OkHttpClient = network.client.newBuilder()
+        .dns(IpFallbackDns())
+        .build()
 
     // =========================== Browse & Search =========================
 
@@ -270,6 +283,17 @@ class Doujiva : HttpSource() {
     private fun JsonObject.arrayOrNull(key: String): JsonArray? =
         if (has(key) && get(key).isJsonArray) get(key).asJsonArray else null
 
+    /** Resolves through the system DNS, falling back to hardcoded IPs when it fails. */
+    private class IpFallbackDns : Dns {
+        override fun lookup(hostname: String): List<InetAddress> {
+            return try {
+                Dns.SYSTEM.lookup(hostname)
+            } catch (e: UnknownHostException) {
+                IP_FALLBACK[hostname.lowercase(Locale.US)] ?: throw e
+            }
+        }
+    }
+
     companion object {
         private const val BROWSER_UA =
             "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
@@ -283,6 +307,18 @@ class Doujiva : HttpSource() {
             "manhwa18.net",
             "cdn.pornwa.us",
             "cdn.pornwa.club",
+        )
+
+        /** Cloudflare Anycast addresses for doujiva.com (shared with cdn.doujiva.com). */
+        private val IP_FALLBACK = mapOf(
+            "doujiva.com" to listOf(
+                InetAddress.getByName("104.21.15.93"),
+                InetAddress.getByName("172.67.205.172"),
+            ),
+            "cdn.doujiva.com" to listOf(
+                InetAddress.getByName("104.21.15.93"),
+                InetAddress.getByName("172.67.205.172"),
+            ),
         )
 
         private val DATE_FORMATS = listOf(
