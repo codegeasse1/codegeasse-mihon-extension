@@ -181,10 +181,13 @@ class Joatoon : HttpSource() {
                 }
                 chapter_number = CHAPTER_NUMBER_REGEX.find(name)
                     ?.groupValues?.getOrNull(1)?.toFloatOrNull() ?: 0f
-                date_upload = dateFormat.tryParse(
-                    a.parents().asList().firstNotNullOfOrNull { it.selectFirst("span.text-xs.text-gray-400") }
-                        ?.text().orEmpty(),
-                )
+                var dateStr: String? = null
+                var node: org.jsoup.nodes.Element? = a.parent()
+                while (node != null && dateStr == null) {
+                    dateStr = node.selectFirst("span.text-xs.text-gray-400")?.text()
+                    node = node.parent()
+                }
+                date_upload = dateFormat.tryParse(dateStr.orEmpty())
             }
         }
     }
