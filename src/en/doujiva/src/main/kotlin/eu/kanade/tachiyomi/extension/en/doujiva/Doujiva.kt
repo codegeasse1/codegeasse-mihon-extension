@@ -190,7 +190,10 @@ class Doujiva : HttpSource() {
     }
 
     override fun pageListRequest(chapter: SChapter): Request =
-        GET("$baseUrl${chapter.url}", headers)
+        GET(
+            if (chapter.url.startsWith("http")) chapter.url else "$baseUrl${chapter.url}",
+            headers,
+        )
 
     override fun pageListParse(response: Response): List<Page> {
         val json = responseJson(response)
