@@ -169,14 +169,20 @@ class Joatoon : HttpSource() {
 
     override fun chapterListParse(response: Response): List<SChapter> {
         val doc = Jsoup.parse(response.body?.string() ?: return emptyList())
+        val seriesTitle = doc.selectFirst("h1")?.text()?.trim().orEmpty()
         return doc.select("a.text-sm[href*='/c/']").map { a ->
             SChapter.create().apply {
                 url = a.absUrl("href")
-                name = a.text().trim()
+                val fullName = a.text().trim()
+                name = if (seriesTitle.isNotBlank() && fullName.startsWith(seriesTitle)) {
+                    fullName.removePrefix(seriesTitle).trim()
+                } else {
+                    fullName
+                }
                 chapter_number = CHAPTER_NUMBER_REGEX.find(name)
                     ?.groupValues?.getOrNull(1)?.toFloatOrNull() ?: 0f
                 date_upload = dateFormat.tryParse(
-                    a.parent()?.selectFirst("span.text-xs.text-gray-400")?.text().orEmpty(),
+                    a.parents().selectFirst("span.text-xs.text-gray-400")?.text().orEmpty(),
                 )
             }
         }
