@@ -1,5 +1,8 @@
 package eu.kanade.tachiyomi.extension.en.divascans
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
@@ -15,10 +18,17 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.Jsoup
+import java.io.BufferedReader
+import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.io.InputStreamReader
+import java.net.ServerSocket
+import java.net.Socket
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.round
 
 /*
  * Diva Scans (https://divascans.com, alias divascans.org) — Next.js App-Router
@@ -35,8 +45,15 @@ import java.util.Locale
  *               that span newlines) in with the hex-id/JSON chunks, so the
  *               parser must skip those rather than colon-hunt.
  *     Chapter : /series/<type>/<slug>/chapter/<num>    -> RSC object with a "pages"
- *               array of { imageUrl }. (Covers are served from
- *               https://media.divascans.org without the /uploads/ prefix.)
+ *               array. Since the site enabled tile-encryption, the full-page
+ *               imageUrl (media.divascans.org/.../p-<uuid>.webp) is a DECOY:
+ *               a valid webp container whose VP8 payload is garbage. The real
+ *               artwork is served as 3 vertical strip images per page
+ *               (media.divascans.org/.../s-<uuid>.webp), listed in each page's
+ *               "strips" array with xOffsetPct/widthPct. The web reader renders
+ *               those strips on a canvas; we fetch them and stitch them into
+ *               one page image (a local loopback HTTP server hands the stitched
+ *               bytes back to tachiyomi's imageRequest flow).
  */
 class DivaScans : HttpSource() {
 
@@ -217,27 +234,121 @@ class DivaScans : HttpSource() {
         val flight = parseFlight(html)
         val pages = flight.firstObject("pages")?.get("pages")?.takeIf { it.isJsonArray }?.asJsonArray
         if (pages != null && pages.size() > 0) {
-            return pages.mapIndexedNotNull { index, element ->
-                val url = cleanImageUrl(element.asJsonObject.string("imageUrl"))
-                if (url.isBlank()) null else Page(index, imageUrl = url)
+            val map = HashMap<String, StitchedPage>()
+            val result = pages.mapIndexedNotNull { index, element ->
+                val obj = element.asJsonObject
+                val id = obj.string("id")
+                val imageUrl = cleanImageUrl(obj.string("imageUrl"))
+                val width = obj.int("width")
+                val height = obj.int("height")
+                val strips = obj.get("strips")?.takeIf { it.isJsonArray }?.asJsonArray
+                    ?.mapNotNull { s ->
+                        val so = s.asJsonObject
+                        val su = cleanImageUrl(so.string("imageUrl"))
+                        if (su.isBlank()) null
+                        else Strip(
+                            imageUrl = su,
+                            xPct = so.get("xOffsetPct")?.takeIf { it.isJsonPrimitive }?.asDouble ?: 0.0,
+                        )
+                    }
+                    .orEmpty()
+
+                val pageUrl = id.ifBlank { imageUrl }
+                if (strips.isNotEmpty()) {
+                    map[pageUrl] = StitchedPage(id, imageUrl, width, height, strips)
+                    // The imageUrl is used by the app as the download cache key —
+                    // append a marker so pre-update cached (garbage decoy) images
+                    // are treated as new and re-downloaded.
+                    Page(index, url = pageUrl, imageUrl = imageUrl.ifBlank { pageUrl } + CACHE_BUST)
+                } else {
+                    if (imageUrl.isBlank()) null else Page(index, url = imageUrl, imageUrl = imageUrl)
+                }
             }
+            // pageIds are globally unique (CUIDs), so accumulate across chapters —
+            // pages from adjacent prefetched chapters must still resolve in imageRequest.
+            synchronized(STITCHED_PAGES) { STITCHED_PAGES.putAll(map) }
+            return result
         }
 
         val domImages = doc.select("div.reader-images img, div.chapter-container img, main img[src*='chapter']")
         if (domImages.isNotEmpty()) {
             return domImages.mapIndexedNotNull { index, element ->
                 val url = cleanImageUrl(element.absUrl("data-src").ifBlank { element.absUrl("src") })
-                if (url.isBlank()) null else Page(index, imageUrl = url)
+                if (url.isBlank()) null else Page(index, url = url, imageUrl = url)
             }
         }
 
         return emptyList()
     }
 
-    override fun imageRequest(page: Page): Request =
-        GET(page.imageUrl ?: page.url, headers.newBuilder().set("Referer", "$baseUrl/").build())
+    override suspend fun getImageUrl(page: Page): String = page.imageUrl ?: page.url
+
+    override fun imageRequest(page: Page): Request {
+        val referer = headers.newBuilder().set("Referer", "$baseUrl/").build()
+        val stitched = synchronized(STITCHED_PAGES) { STITCHED_PAGES[page.url] }
+        if (stitched != null && stitched.strips.isNotEmpty()) {
+            // Fetch the (unencrypted) strip images, stitch them into the full page,
+            // and serve the result from a loopback HTTP server so tachiyomi's
+            // imageRequest flow (OkHttp GET) can consume the bytes.
+            val bytes = stitchPage(stitched)
+            if (bytes != null) {
+                val token = "p" + TOKEN_COUNTER.incrementAndGet()
+                StitchServer.put(token, bytes)
+                return GET("http://127.0.0.1:${StitchServer.port()}/$token", referer)
+            }
+            throw IOException("Failed to assemble page image from strips")
+        }
+        return GET(page.imageUrl ?: page.url, referer)
+    }
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
+
+    // ====================== Strip stitching helpers =====================
+
+    private data class Strip(val imageUrl: String, val xPct: Double)
+
+    private class StitchedPage(
+        val id: String,
+        val imageUrl: String,
+        val width: Int,
+        val height: Int,
+        val strips: List<Strip>,
+    )
+
+    private fun stitchPage(sp: StitchedPage): ByteArray? = runCatching {
+        val stripBitmaps = ArrayList<Pair<Bitmap, Int>>()
+        var pageWidth = sp.width
+        var pageHeight = sp.height
+        for (strip in sp.strips) {
+            val response = client.newCall(GET(strip.imageUrl, headers)).execute()
+            response.use {
+                if (!it.isSuccessful) throw IOException("Strip HTTP ${it.code}")
+                val body = it.body ?: throw IOException("Strip body missing")
+                val bmp = BitmapFactory.decodeStream(body.byteStream())
+                    ?: throw IOException("Strip decode failed")
+                stripBitmaps.add(bmp to round(strip.xPct * pageWidth).toInt())
+                if (bmp.width > pageWidth) pageWidth = bmp.width
+                if (bmp.height > pageHeight) pageHeight = bmp.height
+            }
+        }
+        if (stripBitmaps.isEmpty()) throw IOException("No strips")
+        if (pageWidth <= 0) pageWidth = stripBitmaps.maxOf { it.first.width }
+        if (pageHeight <= 0) pageHeight = stripBitmaps.maxOf { it.first.height }
+
+        val canvas = Bitmap.createBitmap(pageWidth, pageHeight, Bitmap.Config.ARGB_8888).also { out ->
+            val c = Canvas(out)
+            for ((bmp, x) in stripBitmaps) {
+                c.drawBitmap(bmp, x.toFloat(), 0f, null)
+                bmp.recycle()
+            }
+        }
+        val bytes = ByteArrayOutputStream().use { bos ->
+            canvas.compress(Bitmap.CompressFormat.JPEG, 92, bos)
+            canvas.recycle()
+            bos.toByteArray()
+        }
+        bytes
+    }.getOrNull()
 
     // ====================== Next.js RSC flight parsing ===================
 
@@ -440,6 +551,9 @@ class DivaScans : HttpSource() {
     private fun JsonObject.string(key: String): String =
         get(key)?.takeIf { it.isJsonPrimitive }?.asString ?: ""
 
+    private fun JsonObject.int(key: String): Int =
+        get(key)?.takeIf { it.isJsonPrimitive }?.asInt ?: 0
+
     private fun JsonObject.array(key: String): JsonArray =
         get(key)?.takeIf { it.isJsonArray }?.asJsonArray ?: JsonArray()
 
@@ -456,6 +570,88 @@ class DivaScans : HttpSource() {
 
         private val DATE_FORMAT = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
             timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
+
+        private const val CACHE_BUST = "?dv=2"
+
+        private val STITCHED_PAGES: MutableMap<String, StitchedPage> = HashMap()
+
+        private val TOKEN_COUNTER = AtomicLong(0)
+
+        /** Minimal loopback HTTP server that serves one-shot stitched pages. */
+        private object StitchServer {
+            private var holder: StitchServerHolder? = null
+
+            @Synchronized
+            fun port(): Int {
+                if (holder == null) holder = StitchServerHolder()
+                return holder!!.port
+            }
+
+            @Synchronized
+            fun put(token: String, bytes: ByteArray) {
+                if (holder == null) holder = StitchServerHolder()
+                holder!!.put(token, bytes)
+            }
+        }
+
+        private class StitchServerHolder {
+            val port: Int
+            private val images = object : LinkedHashMap<String, ByteArray>(16, 0.75f, true) {
+                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ByteArray>?): Boolean =
+                    size > 16
+            }
+
+            init {
+                val serverSocket = ServerSocket(0)
+                port = serverSocket.localPort
+                val running = java.util.concurrent.atomic.AtomicBoolean(true)
+                Thread {
+                    while (running.get()) {
+                        try {
+                            val client = serverSocket.accept()
+                            Thread { handle(client) }.start()
+                        } catch (_: Exception) {
+                            running.set(false)
+                        }
+                    }
+                }.apply { isDaemon = true; start() }
+            }
+
+            @Synchronized
+            fun put(token: String, bytes: ByteArray) {
+                images[token] = bytes
+            }
+
+            @Synchronized
+            private fun take(token: String): ByteArray? = images.remove(token)
+
+            private fun handle(socket: Socket) {
+                socket.use { s ->
+                    try {
+                        val reader = BufferedReader(InputStreamReader(s.getInputStream()))
+                        val line = reader.readLine() ?: return
+                        val parts = line.split(" ")
+                        if (parts.size >= 2 && parts[0] == "GET") {
+                            val token = parts[1].trim('/').substringAfterLast('/')
+                            val bytes = take(token)
+                            val out = s.getOutputStream()
+                            if (bytes != null) {
+                                val header = "HTTP/1.1 200 OK\r\n" +
+                                    "Content-Type: image/jpeg\r\n" +
+                                    "Content-Length: ${bytes.size}\r\n" +
+                                    "Connection: close\r\n\r\n"
+                                out.write(header.toByteArray())
+                                out.write(bytes)
+                            } else {
+                                out.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+                            }
+                            out.flush()
+                        }
+                    } catch (_: Exception) {
+                    }
+                }
+            }
         }
     }
 }
