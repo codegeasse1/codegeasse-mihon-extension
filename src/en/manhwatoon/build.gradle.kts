@@ -18,7 +18,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "eu.kanade.tachiyomi.extension.en.manhwatop"
+        applicationId = "eu.kanade.tachiyomi.extension.en.manhwatoon"
         minSdk = 21
         targetSdk = 34
         versionCode = extVersionCode

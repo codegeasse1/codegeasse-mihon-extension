@@ -18,7 +18,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "eu.kanade.tachiyomi.extension.en.projectsuki"
+        applicationId = "eu.kanade.tachiyomi.extension.en.manhwaz"
         minSdk = 21
         targetSdk = 34
         versionCode = extVersionCode

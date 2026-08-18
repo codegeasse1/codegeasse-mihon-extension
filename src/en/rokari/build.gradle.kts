@@ -4,8 +4,8 @@ plugins {
 }
 
 // --- Extension metadata -----------------------------------------------
-val extName = "Kingofshojo"
-val extClass = ".Kingofshojo"
+val extName = "Rokari"
+val extClass = ".Rokari"
 val extVersionCode = 1
 val isNsfw = false
 // ----------------------------------------------------------------------
@@ -14,11 +14,11 @@ val libVersion = (project.findProperty("libVersion") as String?) ?: "1.6.0"
 val libApiVersion = "1.4"
 
 android {
-    namespace = "eu.kanade.tachiyomi.extension.en.kingofshojo"
+    namespace = "eu.kanade.tachiyomi.extension.en.rokari"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "eu.kanade.tachiyomi.extension.en.kingofshojo"
+        applicationId = "eu.kanade.tachiyomi.extension.en.rokari"
         minSdk = 21
         targetSdk = 34
         versionCode = extVersionCode
