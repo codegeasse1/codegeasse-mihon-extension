@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-sdk
+        android:minSdkVersion="21"
+        android:targetSdkVersion="34" />
+
+    <uses-feature android:name="tachiyomi.extension" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="${appName}"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:supportsRtl="true">
+
+        <meta-data android:name="tachiyomix.name" android:value="${appName}" />
+        <meta-data android:name="tachiyomix.contentWarning" android:value="${nsfw}" />
+        <meta-data android:name="tachiyomix.extensionLib" android:value="${libVersion}" />
+        <meta-data android:name="tachiyomi.extension.class" android:value="${extClass}" />
+
+        <meta-data android:name="tachiyomi.extension.name" android:value="${appName}" />
+        <meta-data android:name="tachiyomi.extension.nsfw" android:value="${nsfw}" />
+        <meta-data android:name="tachiyomi.extension.lib" android:value="${libVersion}" />
+
+    </application>
+
+</manifest>
