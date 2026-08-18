@@ -30,13 +30,16 @@ import java.util.TimeZone
  *     Browse  : /comics  (rsc:1) -> chunk with an "allComics" array (whole catalog).
  *               Popular = sorted by total_views, Latest = sorted by update_chapter;
  *               search/status filters applied client-side, then paginated in memory.
- *     Manga   : /comic/<slug> (rsc:1) -> object with "seriesData" (details AND
- *               all chapters with their embedded page image URLs).
+ *     Manga   : /comic/<slug> (rsc:1) -> object with a "seriesData" key; since a
+ *               site update the payload is a wrapper `{"seriesData": {...},
+ *               "hasFollowed", "user_id"}` whose inner object carries details
+ *               (AND all chapters, each with embedded page image URLs).
  *     Chapter : /comic/<slug>/<chapter-slug> (rsc:1) -> object with a "pages" array.
  *
  * RSC stream layout: "<hex-id>:<value>" rows separated by "\n". "T" rows hold raw
  * text ("<hex-id>:T<hexByteLen>,<content>") and are referenced from JSON as "$<id>".
  * (The only reference used here is the manga description; everything else is inline.)
+ * Id-less ":HL[...]" preload rows must be skipped whole (see parseFlight).
  */
 class TempleScan : HttpSource() {
 
@@ -151,7 +154,7 @@ class TempleScan : HttpSource() {
 
     override fun mangaDetailsParse(response: Response): SManga {
         val flight = parseFlight(flightData(response))
-        val data = flight.firstObject("seriesData") ?: return SManga.create()
+        val data = seriesData(flight) ?: return SManga.create()
 
         val rawDescription = data.stringOrNull("description")
         val description = if (rawDescription != null && rawDescription.startsWith("$")) {
@@ -212,7 +215,7 @@ class TempleScan : HttpSource() {
 
     override fun chapterListParse(response: Response): List<SChapter> {
         val flight = parseFlight(flightData(response))
-        val data = flight.firstObject("seriesData") ?: return emptyList()
+        val data = seriesData(flight) ?: return emptyList()
         val mangaSlug = data.stringOrNull("series_slug") ?: return emptyList()
 
         return data.arrayOrNull("Season")?.flatMap { seasonElement ->
@@ -277,42 +280,51 @@ class TempleScan : HttpSource() {
         return sb.toString()
     }
 
+    /**
+     * The site recently started wrapping the payload in
+     * `{"seriesData": {...}, "hasFollowed": ..., "user_id": ...}`, so the object
+     * `firstObject("seriesData")` finds may be the wrapper. Unroll it.
+     */
+    private fun seriesData(flight: Flight): JsonObject? {
+        val container = flight.firstObject("seriesData") ?: return null
+        return container.get("seriesData")
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
+            ?: container
+    }
+
     private fun parseFlight(stream: String): Flight {
         val text = HashMap<String, String>()
         val values = ArrayList<JsonElement>()
         var pos = 0
         val n = stream.length
-        while (pos < n) {
-            val colon = stream.indexOf(':', pos)
-            if (colon == -1) break
-            val id = stream.substring(pos, colon)
-            if (id.isEmpty() || !id.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }) {
-                pos = colon + 1
-                continue
+        var guard = 0
+        while (pos < n && guard++ < 10000) {
+            // A chunk must begin a line with a hex id followed by ':'. Anything
+            // else (empty lines, ":HL[...]" preload rows) is skipped whole —
+            // hunting for the next ':' instead desyncs on preload rows, which
+            // contain colons inside their own JSON.
+            var lineStart = pos
+            var colon = stream.indexOf(':', lineStart)
+            var id = if (colon == -1) "" else stream.substring(lineStart, colon)
+            while (colon != -1 && !isHexId(id)) {
+                val nl = stream.indexOf('\n', lineStart)
+                if (nl == -1) return Flight(text, values)
+                lineStart = nl + 1
+                colon = stream.indexOf(':', lineStart)
+                id = if (colon == -1) "" else stream.substring(lineStart, colon)
             }
+            if (colon == -1) break
             if (colon + 1 >= n) break
             when (stream[colon + 1]) {
                 'T' -> {
+                    // Text chunk: "<id>:T<hexByteLen>,<byteLen UTF-8 bytes>" — the
+                    // payload is skipped raw (it may span newlines).
                     val comma = stream.indexOf(',', colon + 2)
                     if (comma == -1) break
                     val byteLen = stream.substring(colon + 2, comma).toIntOrNull(16) ?: break
-                    val start = comma + 1
-                    var end = start
-                    var bytes = 0
-                    while (end < n && bytes < byteLen) {
-                        val c = stream[end]
-                        bytes += when {
-                            c.code < 0x80 -> 1
-                            c.code < 0x800 -> 2
-                            Character.isHighSurrogate(c) -> {
-                                end++
-                                4
-                            }
-                            else -> 3
-                        }
-                        end++
-                    }
-                    text[id] = stream.substring(start, end)
+                    val end = skipUtf8Bytes(stream, comma + 1, byteLen, n)
+                    text[id] = stream.substring(comma + 1, end)
                     pos = end
                 }
                 else -> {
@@ -321,9 +333,28 @@ class TempleScan : HttpSource() {
                     pos = end
                 }
             }
-            while (pos < n && stream[pos] == '\n') pos++
         }
         return Flight(text, values)
+    }
+
+    private fun isHexId(id: String): Boolean =
+        id.isNotEmpty() && id.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
+
+    private fun skipUtf8Bytes(stream: String, start: Int, byteLen: Int, n: Int): Int {
+        var end = start
+        var bytes = 0
+        while (end < n && bytes < byteLen) {
+            val cp = stream.codePointAt(end)
+            bytes += when {
+                cp < 0x80 -> 1
+                cp < 0x800 -> 2
+                cp < 0x10000 -> 3
+                else -> 4
+            }
+            if (cp >= 0x10000) end++
+            end++
+        }
+        return end
     }
 
     /** Returns the end index (exclusive) of the JSON value starting at [start]. */
