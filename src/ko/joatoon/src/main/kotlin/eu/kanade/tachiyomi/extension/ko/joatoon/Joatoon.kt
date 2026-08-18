@@ -182,7 +182,8 @@ class Joatoon : HttpSource() {
                 chapter_number = CHAPTER_NUMBER_REGEX.find(name)
                     ?.groupValues?.getOrNull(1)?.toFloatOrNull() ?: 0f
                 date_upload = dateFormat.tryParse(
-                    a.parents().selectFirst("span.text-xs.text-gray-400")?.text().orEmpty(),
+                    a.parents().asList().firstNotNullOfOrNull { it.selectFirst("span.text-xs.text-gray-400") }
+                        ?.text().orEmpty(),
                 )
             }
         }
