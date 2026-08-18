@@ -107,8 +107,8 @@ class ManhwaZ : HttpSource() {
             title = document.selectFirst(".post-title h1")?.text()?.trim().orEmpty()
             setUrlWithoutDomain(response.request.url.toString())
             document.selectFirst(".summary_image img")?.let { thumbnail_url = it.absUrl("src") }
-            detail("Author(s)").takeIf { it.isNotBlank() && it != "Updating" }?.let { author = it }
-            detail("Artist").takeIf { it.isNotBlank() && it != "Updating" }?.let { artist = it }
+            detail("Author(s)")?.takeIf { it.isNotBlank() && it != "Updating" }?.let { author = it }
+            detail("Artist")?.takeIf { it.isNotBlank() && it != "Updating" }?.let { artist = it }
             document.select(".genres-content a").eachText().joinToString().takeIf { it.isNotBlank() }?.let { genre = it }
             val statusText = detail("status")
             status = when {
