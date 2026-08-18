@@ -20,7 +20,7 @@ import java.util.Calendar
 import java.util.Locale
 
 /*
- * MangaManiacs (https://mangamaniacs.org) — a Wordpress/Madara site hosting
+ * MangaManiacs (https://mangamaniacs.org) â a Wordpress/Madara site hosting
  * uncensored yaoi/BL manga & manhwa (isNsfw). Madara-standard markup:
  *
  *     Popular : /manga/?m_orderby=views      (paged: /manga/page/N/?m_orderby=views)
@@ -220,7 +220,7 @@ class MangaManiacs : HttpSource() {
     }
 
     private fun parseChapterNumber(name: String): Float =
-        Regex("\\d+(?:\\.\\d+)?").findAll(name).lastOrNull()?.value?.toFloatOrNull() ?: -1f
+        Regex("\\d+(?:\\.\\d+)?").find(name)?.value?.toFloatOrNull() ?: -1f
 
     private fun parseDate(text: String): Long {
         val lower = text.lowercase()
