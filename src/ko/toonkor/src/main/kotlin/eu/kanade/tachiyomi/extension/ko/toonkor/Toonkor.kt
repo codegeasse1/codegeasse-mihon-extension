@@ -157,6 +157,10 @@ class Toonkor : HttpSource() {
     )
 
     companion object {
+        private const val BROWSER_UA =
+            "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
+
         private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
         private val pageListRegex = Regex("""src="([^"]*)"""")
 
