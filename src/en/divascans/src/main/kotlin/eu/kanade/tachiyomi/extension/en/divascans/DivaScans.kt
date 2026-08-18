@@ -30,7 +30,10 @@ import java.util.Locale
  *     Manga   : /series/<type>/<slug>                  -> data lives in the Next.js
  *               RSC flight stream embedded in the HTML (self.__next_f.push):
  *               a JSON object containing "series" (details) and a top-level
- *               "chapters" array.
+ *               "chapters" array. The stream mixes id-less ":HL[...]" preload
+ *               rows and "T" text chunks (with byte-length headers, payloads
+ *               that span newlines) in with the hex-id/JSON chunks, so the
+ *               parser must skip those rather than colon-hunt.
  *     Chapter : /series/<type>/<slug>/chapter/<num>    -> RSC object with a "pages"
  *               array of { imageUrl }. (Covers are served from
  *               https://media.divascans.org without the /uploads/ prefix.)
@@ -291,35 +294,31 @@ class DivaScans : HttpSource() {
         var pos = 0
         val n = stream.length
         var guard = 0
-        while (pos < n && guard++ < 5000) {
-            val colon = stream.indexOf(':', pos)
-            if (colon == -1) break
-            val id = stream.substring(pos, colon)
-            if (id.isEmpty() || !id.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }) {
-                pos = colon + 1
-                continue
+        while (pos < n && guard++ < 10000) {
+            // A chunk must begin a line with a hex id followed by ':'. Anything
+            // else (empty lines, ":HL[...]" preload rows) is skipped whole —
+            // hunting for the next ':' instead desyncs on the preload rows,
+            // which contain colons inside their own JSON.
+            var lineStart = pos
+            var colon = stream.indexOf(':', lineStart)
+            var id = if (colon == -1) "" else stream.substring(lineStart, colon)
+            while (colon != -1 && !isHexId(id)) {
+                val nl = stream.indexOf('\n', lineStart)
+                if (nl == -1) return Flight(values)
+                lineStart = nl + 1
+                colon = stream.indexOf(':', lineStart)
+                id = if (colon == -1) "" else stream.substring(lineStart, colon)
             }
+            if (colon == -1) break
             if (colon + 1 >= n) break
             val c = stream[colon + 1]
             if (c == 'T') {
+                // Text chunk: "<id>:T<hexByteLen>,<byteLen UTF-8 bytes>" — the
+                // payload is skipped raw (it may span newlines).
                 val comma = stream.indexOf(',', colon + 2)
-                if (comma == -1) break
+                if (comma == -1 || comma >= n) break
                 val byteLen = stream.substring(colon + 2, comma).toIntOrNull(16) ?: break
-                val start = comma + 1
-                var end = start
-                var bytes = 0
-                while (end < n && bytes < byteLen) {
-                    val cp = stream.codePointAt(end)
-                    bytes += when {
-                        cp < 0x80 -> 1
-                        cp < 0x800 -> 2
-                        cp < 0x10000 -> 3
-                        else -> 4
-                    }
-                    if (cp >= 0x10000) end++
-                    end++
-                }
-                pos = end
+                pos = skipUtf8Bytes(stream, comma + 1, byteLen, n)
             } else {
                 val end = scanJsonValue(stream, colon + 1) ?: break
                 val raw = stream.substring(colon + 1, end)
@@ -328,9 +327,28 @@ class DivaScans : HttpSource() {
                 runCatching { values.add(JsonParser.parseString(sanitized)) }
                 pos = end
             }
-            while (pos < n && stream[pos] == '\n') pos++
         }
         return Flight(values)
+    }
+
+    private fun isHexId(id: String): Boolean =
+        id.isNotEmpty() && id.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
+
+    private fun skipUtf8Bytes(stream: String, start: Int, byteLen: Int, n: Int): Int {
+        var end = start
+        var bytes = 0
+        while (end < n && bytes < byteLen) {
+            val cp = stream.codePointAt(end)
+            bytes += when {
+                cp < 0x80 -> 1
+                cp < 0x800 -> 2
+                cp < 0x10000 -> 3
+                else -> 4
+            }
+            if (cp >= 0x10000) end++
+            end++
+        }
+        return end
     }
 
     private fun scanJsonValue(stream: String, start: Int): Int? {

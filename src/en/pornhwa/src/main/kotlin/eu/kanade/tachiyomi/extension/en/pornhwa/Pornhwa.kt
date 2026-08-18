@@ -22,18 +22,23 @@ import java.net.URLEncoder
  * image CDN. Every page is plain server-rendered HTML (the client only adds an
  * infinite-scroll "Load More" through a Qwik action we never need to call).
  *
- *     Browse : /manhwa-list/              (latest; page 1 = 17 cards + one
- *              /manhwa-list/?page=<N>      broken empty-slug slot, filtered)
+ *     Browse : /type/manhwa/[/?page=<N>]  (latest; newer counterpart of the
+ *              legacy /manhwa-list/ which still serves dead hentairead.com
+ *              covers — must NOT be used)
  *              /popular/[/?page=<N>]       (most viewed)
  *              /tax/genre/<slug>[/?page=<N>]
- *     Search : /search/<query>[/?page=<N>]
+ *     Search : /search/<query>[/?page=<N>] (URL-encoded query, NOT slugified:
+ *              spaces must stay %20 or the results page comes back empty)
  *     Manga  : /manhwa/<slug>/  -> h1[class*=drop-shadow-solid] title,
  *              meta[property=og:image] cover, p:containsOwn(Author) block,
  *              div[class*=bg-green-800] status, a[href*=/tax/genre/] tags and
  *              div.mt-4.w-full > p synopsis; all chapters (newest first) sit
  *              in div.mt-4.flex.max-h-96.flex-col.gap-2.overflow-y-auto
- *     Chapter: /manhwa/<slug>/chapter-<n> -> img[data-src] whose URL contains
- *              "/chapter-" (s1.manhwature.com CDN, no hotlink protection)
+ *     Chapter: /manhwa/<slug>/chapter-<n> -> div.bg-reader img[data-src].
+ *              The site has rotated page-image CDNs (s1.manhwature.com signed
+ *              URLs now; previously cdn.manhwature.com WP-manga paths that
+ *              contain no "/chapter-"), so we scope on the reader container
+ *              class instead of filtering on the URL.
  *
  * Pagination quirk: ?page=N grows the SSR page cumulatively (page N renders
  * pages 1..N, adding 18 new cards per page), so for page > 1 we only return
@@ -70,7 +75,7 @@ class Pornhwa : HttpSource() {
         parseList(response, requestPage(response), isLatest = false)
 
     override fun latestUpdatesRequest(page: Int): Request =
-        GET(listUrl("/manhwa-list/", page), headers)
+        GET(listUrl("/type/manhwa/", page), headers)
 
     override fun latestUpdatesParse(response: Response): MangasPage =
         parseList(response, requestPage(response), isLatest = true)
@@ -89,7 +94,7 @@ class Pornhwa : HttpSource() {
             genre != null ->
                 listUrl("/tax/genre/$genre/", page)
             else ->
-                listUrl("/manhwa-list/", page)
+                listUrl("/type/manhwa/", page)
         }
         return GET(url, headers)
     }
@@ -203,9 +208,9 @@ class Pornhwa : HttpSource() {
     override fun pageListParse(response: Response): List<Page> {
         val document = response.asDocument()
         val chapterUrl = response.request.url.toString()
-        return document.select("img[data-src]").mapIndexedNotNull { index, element ->
+        return document.select(PAGE_SELECTOR).mapIndexedNotNull { index, element ->
             val imageUrl = imageFromElement(element)
-            if (imageUrl.isNullOrBlank() || !imageUrl.contains("/chapter-")) null
+            if (imageUrl.isNullOrBlank()) null
             else Page(index, chapterUrl, imageUrl)
         }
     }
@@ -240,6 +245,7 @@ class Pornhwa : HttpSource() {
         private val CARD_URL_REGEX = Regex("""^/manhwa/[^/]+/$""")
         private const val CHAPTER_LIST_SELECTOR =
             "div.mt-4.flex.max-h-96.flex-col.gap-2.overflow-y-auto a[href*='/chapter-']"
+        private const val PAGE_SELECTOR = "div.bg-reader img[data-src]"
 
         private val CHAPTER_NUMBER_REGEX = Regex("""(\d+(?:\.\d+)?)""")
     }
