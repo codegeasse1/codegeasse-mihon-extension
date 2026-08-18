@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.extension.en.mangagg
+package eu.kanade.tachiyomi.extension.en.manhwatop
 
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
@@ -15,27 +15,25 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.io.IOException
 import java.net.URLEncoder
-import java.text.SimpleDateFormat
-import java.util.Locale
 
 /*
- * MangaGG (https://mangagg.com) — WordPress with a Madara (WP-Manga) theme.
+ * Manhwatop (https://manhwatop.com) — WordPress with a Madara (WP-Manga) theme.
  *
- *     Popular : /comic/?m_orderby=views            (page N: /comic/page/N/?m_orderby=views)
- *     Latest  : /comic/?m_orderby=latest           (page N: /comic/page/N/?m_orderby=latest)
- *     Search  : /?s=<q>&post_type=wp-manga         (12 results per page, no pagination)
- *     Manga   : /comic/<slug>                      -> .post-title h1, .summary_image img
- *               (cover uses data-lazy-src), .author-content/.artist-content/.genres-content a,
- *               status .post-content_item row with h5 "Status", chapters are NOT in the
- *               initial HTML — POST $baseUrl/ajax/chapters/?t=<page> (XHR headers) returns
- *               li.wp-manga-chapter fragments with .pagination a[data-page] pagination
- *     Chapter : /comic/<slug>/chapter-<n>          -> div.reading-content img.wp-manga-chapter-img
- *               (page images on s4.mangagg.com, src attr has a leading space — trim!)
+ *     Popular : /manga/?m_orderby=views           (page N: /manga/page/N/?m_orderby=views)
+ *     Latest  : /manga/?m_orderby=latest          (page N: /manga/page/N/?m_orderby=latest)
+ *     Search  : /?s=<q>&post_type=wp-manga        (12 results per page, no pagination)
+ *     Manga   : /manga/<slug>                     -> .post-title h1, .summary_image img
+ *               (cover uses data-src), .author-content/.artist-content/.genres-content a,
+ *               status row whose heading is a span.h5 (not h5), description
+ *               .description-summary .summary__content; chapters NOT in initial HTML —
+ *               POST $baseUrl/ajax/chapters/ (XHR headers) returns li.wp-manga-chapter
+ *     Chapter : /manga/<slug>/chapter-<n>         -> div.reading-content .page-break img,
+ *               real image URL in data-src (src is a dflazy.svg placeholder)
  */
-class MangaGG : HttpSource() {
+class Manhwatop : HttpSource() {
 
-    override val name = "MangaGG"
-    override val baseUrl = "https://mangagg.com"
+    override val name = "Manhwatop"
+    override val baseUrl = "https://manhwatop.com"
     override val lang = "en"
     override val supportsLatest = true
 
@@ -51,7 +49,7 @@ class MangaGG : HttpSource() {
     // =========================== Browse & Search =========================
 
     override fun popularMangaRequest(page: Int): Request =
-        GET(if (page == 1) "$baseUrl/comic/?m_orderby=views" else "$baseUrl/comic/page/$page/?m_orderby=views", headers)
+        GET(if (page == 1) "$baseUrl/manga/?m_orderby=views" else "$baseUrl/manga/page/$page/?m_orderby=views", headers)
 
     override fun popularMangaParse(response: Response): MangasPage {
         val document = response.asDocument()
@@ -61,7 +59,7 @@ class MangaGG : HttpSource() {
     }
 
     override fun latestUpdatesRequest(page: Int): Request =
-        GET(if (page == 1) "$baseUrl/comic/?m_orderby=latest" else "$baseUrl/comic/page/$page/?m_orderby=latest", headers)
+        GET(if (page == 1) "$baseUrl/manga/?m_orderby=latest" else "$baseUrl/manga/page/$page/?m_orderby=latest", headers)
 
     override fun latestUpdatesParse(response: Response): MangasPage =
         popularMangaParse(response)
@@ -114,7 +112,7 @@ class MangaGG : HttpSource() {
         val postItems = document.select(".post-content_item")
         fun detail(label: String): String? =
             postItems.firstOrNull { item ->
-                item.selectFirst(".summary-heading h5")?.text()?.trim()?.equals(label, true) == true
+                item.selectFirst(".summary-heading h5, .summary-heading .h5")?.text()?.trim()?.equals(label, true) == true
             }?.selectFirst(".summary-content")?.text()?.trim()
 
         return SManga.create().apply {
@@ -178,9 +176,6 @@ class MangaGG : HttpSource() {
             url = link.absUrl("href")
             name = link.text().trim().ifBlank { link.attr("title") }
             chapter_number = CHAPTER_NUMBER_REGEX.find(name)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
-            date_upload = element.selectFirst(".chapter-release-date")?.text()
-                ?.let { text -> runCatching { DATE_FORMAT.parse(text)?.time ?: 0L }.getOrDefault(0L) }
-                ?: 0L
         }
     }
 
@@ -225,7 +220,5 @@ class MangaGG : HttpSource() {
                 "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
 
         private val CHAPTER_NUMBER_REGEX = Regex("""(\d+(?:\.\d+)?)""")
-
-        private val DATE_FORMAT = SimpleDateFormat("MM/dd/yyyy", Locale.US)
     }
 }
