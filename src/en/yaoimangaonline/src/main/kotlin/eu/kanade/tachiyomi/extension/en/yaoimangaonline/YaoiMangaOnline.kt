@@ -36,7 +36,7 @@ class YaoiMangaOnline : HttpSource() {
     override val name = "Yaoi Manga Online"
     override val baseUrl = "https://yaoimangaonline.com"
     override val lang = "en"
-    override val supportsLatest = false
+    override val supportsLatest = true
 
     override fun headersBuilder() = super.headersBuilder()
         .set("User-Agent", BROWSER_UA)
@@ -67,11 +67,12 @@ class YaoiMangaOnline : HttpSource() {
         return MangasPage(mangas, hasNextPage)
     }
 
-    // ====================== Latest (unused) =======================
+    // ====================== Latest (same as popular) =================
 
-    override fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException()
+    override fun latestUpdatesRequest(page: Int): Request =
+        GET("$baseUrl/page/$page/", headers)
 
-    override fun latestUpdatesParse(response: Response): MangasPage = throw UnsupportedOperationException()
+    override fun latestUpdatesParse(response: Response): MangasPage = popularMangaParse(response)
 
     // =========================== Search ===========================
 
@@ -170,7 +171,8 @@ class YaoiMangaOnline : HttpSource() {
     override fun imageRequest(page: Page): Request =
         GET(page.imageUrl ?: page.url, headers)
 
-    override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
+    override fun imageUrlParse(response: Response): String =
+        throw UnsupportedOperationException("imageUrl is resolved in pageListParse")
 
     // =========================== Filters ==========================
 

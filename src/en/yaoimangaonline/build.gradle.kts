@@ -6,7 +6,7 @@ plugins {
 // --- Extension metadata -----------------------------------------------
 val extName = "Yaoi Manga Online"
 val extClass = ".YaoiMangaOnline"
-val extVersionCode = 1
+val extVersionCode = 2
 val isNsfw = true
 // ----------------------------------------------------------------------
 
