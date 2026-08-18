@@ -126,7 +126,7 @@ class GalaxyManga : HttpSource() {
             val link = li.selectFirst(".eph-num a") ?: return@mapNotNull null
             SChapter.create().apply {
                 url = link.absUrl("href")
-                name = li.selectFirst(".chapternum")?.text()?.trim().ifBlank { link.text() }
+                name = li.selectFirst(".chapternum")?.text()?.trim().orEmpty().ifBlank { link.text() }
                 chapter_number = CHAPTER_NUMBER_REGEX.find(name)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
                 date_upload = li.selectFirst(".chapterdate")?.text()
                     ?.let { text -> runCatching { DATE_FORMAT.parse(text)?.time ?: 0L }.getOrDefault(0L) }
