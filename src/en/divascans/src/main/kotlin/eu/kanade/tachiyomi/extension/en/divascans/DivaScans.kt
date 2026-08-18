@@ -537,6 +537,18 @@ class DivaScans : HttpSource() {
         val httpUrl = absoluteUrl.toHttpUrlOrNull() ?: return url
         var cleanUrl = httpUrl.queryParameter("url") ?: absoluteUrl
         if (cleanUrl.startsWith("/")) cleanUrl = "$baseUrl$cleanUrl"
+        // The site serves uploads from the media CDN without the /uploads/
+        // prefix (see webpack chunk 16715). coverImage comes back relative as
+        // "/uploads/series/.../cover-*.webp" (and "/uploads/api/*"); rewriting
+        // to https://media.divascans.org/<rest> is required or the cover fetch
+        // 404s on divascans.com/series/...
+        val uploadsIndex = cleanUrl.indexOf("/uploads/")
+        if (uploadsIndex != -1) {
+            val rest = cleanUrl.substring(uploadsIndex + "/uploads/".length)
+            if (!rest.startsWith("comic-pages/") && !rest.startsWith("reports/")) {
+                return "https://media.divascans.org/$rest".substringBefore("?")
+            }
+        }
         return cleanUrl
             .replace("divascans.org", "media.divascans.org")
             .replace("media.media.divascans.org", "media.divascans.org")
