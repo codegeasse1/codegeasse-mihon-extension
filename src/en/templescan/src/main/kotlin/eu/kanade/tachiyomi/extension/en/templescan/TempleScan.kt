@@ -16,12 +16,11 @@ import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.Jsoup
 import org.jsoup.safety.Safelist
-import rx.Observable
 import java.io.IOException
+import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
-import kotlin.math.min
 
 /*
  * TempleScan (https://templescan.net) — Next.js App-Router site.
@@ -53,41 +52,63 @@ class TempleScan : HttpSource() {
 
     private val rscHeaders = headersBuilder().set("rsc", "1").build()
 
-    private var seriesCache: List<JsonObject> = emptyList()
-
     // =========================== Browse & Search =========================
 
-    override fun fetchPopularManga(page: Int): Observable<MangasPage> =
-        fetchCatalog(page, "", OrderFilter.TRENDING, "")
+    override fun popularMangaRequest(page: Int): Request =
+        GET("$baseUrl/comics?page=$page", rscHeaders)
 
-    override fun fetchLatestUpdates(page: Int): Observable<MangasPage> =
-        fetchCatalog(page, "", OrderFilter.UPDATED, "")
+    override fun popularMangaParse(response: Response): MangasPage =
+        parseDirectory(
+            response,
+            OrderFilter.TRENDING,
+            "",
+            page = response.request.url.queryParameter("page")?.toIntOrNull() ?: 1,
+        )
 
-    override fun fetchSearchManga(page: Int, query: String, filters: FilterList): Observable<MangasPage> {
+    override fun latestUpdatesRequest(page: Int): Request =
+        GET("$baseUrl/comics?page=$page", rscHeaders)
+
+    override fun latestUpdatesParse(response: Response): MangasPage =
+        parseDirectory(
+            response,
+            OrderFilter.UPDATED,
+            "",
+            page = response.request.url.queryParameter("page")?.toIntOrNull() ?: 1,
+        )
+
+    override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
         val status = filters.filterIsInstance<StatusFilter>().firstOrNull()?.selected.orEmpty()
         val order = filters.filterIsInstance<OrderFilter>().firstOrNull()?.selected ?: OrderFilter.UPDATED
-        return fetchCatalog(page, query, order, status)
+        return GET(
+            "$baseUrl/comics?page=$page" +
+                "&q=${URLEncoder.encode(query, "utf-8")}" +
+                "&s=${URLEncoder.encode(status, "utf-8")}" +
+                "&o=$order",
+            rscHeaders,
+        )
     }
 
-    private fun fetchCatalog(page: Int, query: String, order: String, status: String): Observable<MangasPage> {
-        if (page == 1) {
-            client.newCall(GET("$baseUrl/comics", rscHeaders)).execute().use { response ->
-                seriesCache = parseBrowse(response)
-            }
-        }
-        return Observable.just(parseDirectory(page, query, order, status))
+    override fun searchMangaParse(response: Response): MangasPage {
+        val page = response.request.url.queryParameter("page")?.toIntOrNull() ?: 1
+        val query = response.request.url.queryParameter("q").orEmpty()
+        val status = response.request.url.queryParameter("s").orEmpty()
+        val order = response.request.url.queryParameter("o") ?: OrderFilter.UPDATED
+        return parseDirectory(response, order, status, query, page)
     }
 
-    private fun parseBrowse(response: Response): List<JsonObject> {
+    private fun parseDirectory(
+        response: Response,
+        order: String,
+        status: String,
+        query: String = "",
+        page: Int = 1,
+    ): MangasPage {
         val flight = parseFlight(flightData(response))
-        val container = flight.firstObject("allComics") ?: return emptyList()
+        val container = flight.firstObject("allComics") ?: return MangasPage(emptyList(), false)
         val arr = container.get("allComics")
-        if (!arr.isJsonArray) return emptyList()
-        return arr.asJsonArray.mapNotNull { if (it is JsonObject) it else null }
-    }
+        if (!arr.isJsonArray) return MangasPage(emptyList(), false)
 
-    private fun parseDirectory(page: Int, query: String, order: String, status: String): MangasPage {
-        var list = seriesCache.filter { series ->
+        var list = arr.asJsonArray.mapNotNull { if (it is JsonObject) it else null }.filter { series ->
             val title = series.stringOrNull("title").orEmpty()
             val alt = series.stringOrNull("alternative_names").orEmpty()
             val queryOk = query.isBlank() ||
@@ -194,7 +215,7 @@ class TempleScan : HttpSource() {
         val data = flight.firstObject("seriesData") ?: return emptyList()
         val mangaSlug = data.stringOrNull("series_slug") ?: return emptyList()
 
-        return data.arrayOrNull("Season").flatMap { seasonElement ->
+        return data.arrayOrNull("Season")?.flatMap { seasonElement ->
             val season = seasonElement as? JsonObject ?: return@flatMap emptyList()
             val chapters = season.arrayOrNull("Chapter") ?: return@flatMap emptyList()
             chapters.mapNotNull { chapterElement ->
@@ -214,7 +235,7 @@ class TempleScan : HttpSource() {
                     chapter_number = CHAPTER_NUMBER_REGEX.find(name)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
                 }
             }
-        }
+        } ?: emptyList()
     }
 
     // =============================== Pages ================================
@@ -240,16 +261,6 @@ class TempleScan : HttpSource() {
         GET(page.imageUrl ?: page.url, headers)
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
-
-    // ======================= Unsupported defaults =========================
-
-    override fun popularMangaRequest(page: Int): Request = throw UnsupportedOperationException()
-    override fun popularMangaParse(response: Response): MangasPage = throw UnsupportedOperationException()
-    override fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException()
-    override fun latestUpdatesParse(response: Response): MangasPage = throw UnsupportedOperationException()
-    override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request =
-        throw UnsupportedOperationException()
-    override fun searchMangaParse(response: Response): MangasPage = throw UnsupportedOperationException()
 
     // ======================= RSC flight parsing ===========================
 
