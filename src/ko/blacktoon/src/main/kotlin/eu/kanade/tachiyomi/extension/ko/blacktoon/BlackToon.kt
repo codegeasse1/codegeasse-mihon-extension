@@ -81,13 +81,13 @@ class BlackToon : HttpSource() {
         cachedDb?.let { return it }
         synchronized(this) {
             cachedDb?.let { return it }
-            val doc = Jsoup.parse(client.newCall(GET(baseUrl, headers)).execute().body.string())
+            val doc = Jsoup.parse(client.newCall(GET(baseUrl, headers)).execute().body?.string().orEmpty())
             val list = mutableListOf<SeriesItem>()
             for (scriptEl in doc.select("script[src*=data/webtoon]")) {
                 val jsUrl = scriptEl.absUrl("src")
                 if (jsUrl.isBlank()) continue
                 val body = runCatching {
-                    client.newCall(GET(jsUrl, headers)).execute().use { it.body.string() }
+                    client.newCall(GET(jsUrl, headers)).execute().use { it.body?.string().orEmpty() }
                 }.getOrNull() ?: continue
                 val listIdx = body.substringBefore(" = ").substringAfter("data").toIntOrNull() ?: continue
                 val json = body.substringAfter(" = ").removeSuffix(";")
