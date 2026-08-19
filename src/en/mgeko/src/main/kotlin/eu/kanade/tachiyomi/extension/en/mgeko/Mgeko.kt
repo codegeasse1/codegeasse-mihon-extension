@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.extension.en.mgeko
 
+import com.google.gson.JsonParser
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -10,17 +11,19 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
 /*
  * Mgeko (https://www.mgeko.cc)
  *
- *     Popular : /browse-comics/        (browse cards)
- *     Latest  : /browse-comics/?sort=recently_added&page=1
- *     Search  : /search/<query>        (manga cards)
- *     Detail  : /manga/<slug>/         (h1, cover imgsrv5.com/media/manga_covers/...)
- *     Chapters: .chapter-list li a     (href="/reader/en/<slug>-chapter-N-eng-li/")
- *     Pages   : reader page embeds <img src="https://imgsrv5.com/sv2/comic/<slug>/chapter-N/<p>.webp">
+ *     Popular : /browse-comics/data/?page=N            (JSON: {results_html, page, num_pages})
+ *     Latest  : /browse-comics/data/?page=N&sort=recently_added
+ *     Search  : /browse-comics/data/?page=N&q=<query>
+ *               results_html = <article class="comic-card"> <a href="/manga/<slug>/"> <img src="https://imgsrv5.com/...">
+ *     Detail  : /manga/<slug>/          (og:image cover, chapters li.chapter-list-item a[href*='/reader/en/'])
+ *     Chapters: /reader/en/<slug>-chapter-N-eng-li/
+ *     Pages   : reader page embeds <img src="https://imgsrv5.com/sv2/comic/<slug>/chapter-N/<p>.jpg">
  */
 class Mgeko : HttpSource() {
 
@@ -35,37 +38,51 @@ class Mgeko : HttpSource() {
 
     // =========================== Browse & Search =========================
 
-    override fun popularMangaRequest(page: Int): Request =
-        GET("$baseUrl/browse-comics/?sort=views&page=$page", headers)
+    private fun dataUrl(page: Int, sort: String? = null, query: String? = null): String =
+        buildString {
+            append("$baseUrl/browse-comics/data/?page=$page")
+            if (sort != null) append("&sort=$sort")
+            if (query != null) append("&q=${URLEncoder.encode(query, "utf-8")}")
+        }
 
-    override fun popularMangaParse(response: Response): MangasPage = parseList(response)
+    override fun popularMangaRequest(page: Int): Request =
+        GET(dataUrl(page), headers)
+
+    override fun popularMangaParse(response: Response): MangasPage = parseJson(response)
 
     override fun latestUpdatesRequest(page: Int): Request =
-        GET("$baseUrl/browse-comics/?sort=recently_added&page=$page", headers)
+        GET(dataUrl(page, "recently_added"), headers)
 
-    override fun latestUpdatesParse(response: Response): MangasPage = parseList(response)
+    override fun latestUpdatesParse(response: Response): MangasPage = parseJson(response)
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request =
-        GET("$baseUrl/search/${URLEncoder.encode(query, "utf-8")}?page=$page", headers)
+        GET(dataUrl(page, query = query), headers)
 
-    override fun searchMangaParse(response: Response): MangasPage = parseList(response)
+    override fun searchMangaParse(response: Response): MangasPage = parseJson(response)
 
     override fun getFilterList(): FilterList = FilterList()
 
-    private fun parseList(response: Response): MangasPage {
-        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
-        val items = doc.select("a[href*='/manga/']")
-        val mangas = items.mapNotNull { element ->
+    private fun parseJson(response: Response): MangasPage {
+        val body = response.body?.string() ?: return MangasPage(emptyList(), false)
+        val json = runCatching { JsonParser.parseString(body).asJsonObject }.getOrNull()
+            ?: return MangasPage(emptyList(), false)
+        val html = json.get("results_html")?.takeIf { it.isJsonPrimitive }?.asString
+            ?: return MangasPage(emptyList(), false)
+        val doc = Jsoup.parse(html, response.request.url.toString())
+        val mangas = doc.select("article.comic-card a[href*='/manga/']").mapNotNull { element ->
             val url = element.attr("href")
-            if (!url.startsWith("/manga/")) return@mapNotNull null
+            val slug = url.trimEnd('/').substringAfterLast('/')
+            if (!url.contains("/manga/") || slug.isEmpty()) return@mapNotNull null
             val img = element.selectFirst("img")
             SManga.create().apply {
-                this.url = url
-                title = element.text().ifBlank { img?.attr("alt") }?.ifBlank { url.trimEnd('/').substringAfterLast('/') }.orEmpty()
-                thumbnail_url = img?.attr("abs:data-src") ?: img?.attr("abs:src")
+                this.url = url.substringAfter(baseUrl)
+                title = element.text().ifBlank { img?.attr("alt") }?.ifBlank { slug }.orEmpty()
+                thumbnail_url = img?.httpImageUrl()
             }
         }.distinctBy { it.url }
-        return MangasPage(mangas, false)
+        val page = json.get("page")?.takeIf { it.isJsonPrimitive }?.asInt ?: 1
+        val numPages = json.get("num_pages")?.takeIf { it.isJsonPrimitive }?.asInt ?: 1
+        return MangasPage(mangas, page < numPages)
     }
 
     // =========================== Manga Details ===========================
@@ -79,7 +96,7 @@ class Mgeko : HttpSource() {
             url = response.request.url.toString().substringAfter(baseUrl)
             title = doc.selectFirst("h1")?.text() ?: ""
             thumbnail_url = doc.selectFirst("img[src*='manga_covers'], meta[property='og:image']")
-                ?.attr("abs:src") ?: doc.selectFirst("meta[property='og:image']")?.attr("content")
+                ?.httpImageUrl() ?: doc.selectFirst("meta[property='og:image']")?.attr("content")?.toHttpUrl()
             description = doc.selectFirst(".manga-description, [itemprop=description]")?.text() ?: ""
             genre = doc.select("a[href*='/genre/'], a[href*='/category/']").joinToString { it.text() }
             status = when {
@@ -97,11 +114,11 @@ class Mgeko : HttpSource() {
 
     override fun chapterListParse(response: Response): List<SChapter> {
         val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
-        return doc.select(".chapter-list li a").mapNotNull { element ->
+        return doc.select("li.chapter-list-item a[href*='/reader/en/']").mapNotNull { element ->
             val url = element.attr("href")
             if (!url.contains("/reader/en/")) return@mapNotNull null
             SChapter.create().apply {
-                this.url = url
+                this.url = url.substringAfter(baseUrl)
                 name = element.text().ifBlank { url.trimEnd('/').substringAfterLast('/') }
                 val num = Regex("""chapter-(\d+(?:\.\d+)?)-eng""").find(url)?.groupValues?.get(1)
                 chapter_number = num?.toFloatOrNull() ?: 0F
@@ -118,9 +135,7 @@ class Mgeko : HttpSource() {
 
     override fun pageListParse(response: Response): List<Page> {
         val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
-        val urls = doc.select("img[src*='imgsrv5.com/sv2/comic/']").mapNotNull { img ->
-            img.attr("abs:src").ifBlank { img.attr("abs:data-src") }.ifBlank { null }
-        }
+        val urls = doc.select("img[src*='imgsrv5.com/sv2/comic/']").mapNotNull { it.httpImageUrl() }
         return urls.mapIndexed { index, url -> Page(index, response.request.url.toString(), url) }
     }
 
@@ -128,6 +143,16 @@ class Mgeko : HttpSource() {
         GET(page.imageUrl!!, headers)
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
+
+    // ============================= Utilities =============================
+
+    private fun Element.httpImageUrl(): String? =
+        attr("abs:data-src").ifEmpty { attr("abs:src") }.toHttpUrl()
+
+    private fun String.toHttpUrl(): String? {
+        val raw = trim()
+        return raw.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+    }
 
     companion object {
         private const val BROWSER_UA =

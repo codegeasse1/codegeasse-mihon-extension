@@ -20,7 +20,7 @@ import java.net.URLEncoder
  *     Popular : /mangas/new?page=N    (cards: a[href^="/manga/"], img[data-src], img[alt])
  *     Latest  : /chapters?page=N      (recent chapter rows linking to /manga/<id>/<slug>)
  *     Search  : /search?title=<q>     (same card markup as popular)
- *     Detail  : /manga/<id>/<slug>    (h1, cover img, chapter links a[href^="/chapters/"])
+ *     Detail  : /manga/<id>/<slug>    (h1, cover img[data-src], chapter links a[href^="/chapters/"])
  *     Pages   : reader page embeds every image in <img class="js-page" data-src="https://cdn.readdetectiveconan.com/file/mangap/...">
  */
 class Mangapill : HttpSource() {
@@ -57,14 +57,14 @@ class Mangapill : HttpSource() {
         val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         val mangas = doc.select("a[href*='/manga/']").mapNotNull { element ->
             val url = element.attr("href")
-            val slug = url.substringAfter("/manga/", "")
+            val slug = url.substringAfter("/manga/", "").trimEnd('/')
             if (!url.startsWith("/manga/") || slug.isEmpty() || "/" == slug) return@mapNotNull null
             val img = element.selectFirst("img") ?: return@mapNotNull null
             val alt = img.attr("alt").trim()
             SManga.create().apply {
                 this.url = url
                 title = alt.ifEmpty { slug.substringAfter('/').replace('-', ' ') }
-                thumbnail_url = img.attr("abs:data-src").ifEmpty { img.attr("abs:src") }
+                thumbnail_url = img.httpImageUrl()
             }
         }.distinctBy { it.url }
         return MangasPage(mangas, false)
@@ -80,8 +80,8 @@ class Mangapill : HttpSource() {
         return SManga.create().apply {
             url = response.request.url.toString().substringAfter(baseUrl)
             title = doc.selectFirst("h1")?.text() ?: ""
-            thumbnail_url = doc.selectFirst("img[data-src]")?.attr("abs:data-src")
-                ?: doc.selectFirst("meta[property='og:image']")?.attr("content")
+            thumbnail_url = doc.selectFirst("img[data-src]")?.httpImageUrl()
+                ?: doc.selectFirst("meta[property='og:image']")?.attr("content")?.toHttpUrl()
             description = doc.selectFirst("main p")?.text() ?: ""
             genre = doc.select(".badge, [class*='tag']").joinToString { it.text() }
             status = when {
@@ -121,7 +121,7 @@ class Mangapill : HttpSource() {
 
     override fun pageListParse(response: Response): List<Page> {
         val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
-        val urls = doc.select("img.js-page[data-src]").mapNotNull { it.attr("abs:data-src") }
+        val urls = doc.select("img.js-page[data-src]").mapNotNull { it.httpImageUrl() }
         return urls.mapIndexed { index, url -> Page(index, response.request.url.toString(), url) }
     }
 
@@ -129,6 +129,16 @@ class Mangapill : HttpSource() {
         GET(page.imageUrl!!, headers)
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
+
+    // ============================= Utilities =============================
+
+    private fun Element.httpImageUrl(): String? =
+        attr("abs:data-src").ifEmpty { attr("abs:src") }.toHttpUrl()
+
+    private fun String.toHttpUrl(): String? {
+        val raw = trim()
+        return raw.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+    }
 
     companion object {
         private const val BROWSER_UA =

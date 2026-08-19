@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.extension.en.manganato
 
+import com.google.gson.JsonParser
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -10,17 +11,19 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
 /*
  * Manganato (https://www.manganato.gg)
  *
- *     Popular : /            (homepage .content-homepage-item cards, ?page=N)
- *     Search  : /search/story/<query>  (Cloudflare-protected; may fail -> falls back to homepage)
- *     Detail  : /manga/<slug>          (h1, cover img-r2.2xstorage.com/thumb/<slug>.webp)
- *     Chapters: /manga/<slug>/chapter-N
- *     Pages   : reader div.container-chapter-reader img[src] = https://img-r1.2xstorage.com/<slug>/<chapter_id>/<n>.webp
- *               chapter_id comes from window.chapter_data JSON on the reader page.
+ *     Popular : /?page=N            (homepage cards; manga links a[href*='/manga/'], cover = thumb/<slug>.webp)
+ *     Search  : /search/story/<q>   (same card markup)
+ *     Detail  : /manga/<slug>       (h1, cover 2xstorage.com/thumb/<slug>.webp)
+ *     Chapters: GET /api/manga/<slug>/chapters  -> {"data":{"chapters":[{chapter_name,chapter_slug,chapter_num,...}]}}
+ *               chapter url = /manga/<slug>/<chapter_slug>
+ *     Pages   : reader div.container-chapter-reader img[src] = https://img-r1.2xstorage.com/<slug>/<chapterId>/<n>.webp
  */
 class Manganato : HttpSource() {
 
@@ -53,15 +56,17 @@ class Manganato : HttpSource() {
 
     private fun parseList(response: Response): MangasPage {
         val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
-        val items = doc.select(".content-homepage-item a.item-title, .search-story-item a.item-title, .panel-search-story .search-story-item a")
-        val mangas = items.mapNotNull { element ->
+        val mangas = doc.select("a[href*='/manga/']").mapNotNull { element ->
             val url = element.attr("href")
-            if (!url.contains("/manga/")) return@mapNotNull null
-            val card = element.parent()
+            val slug = url.trimEnd('/').substringAfterLast('/')
+            if (!url.contains("/manga/") || url.contains("/chapter-") || slug.isEmpty()) return@mapNotNull null
+            val img = element.selectFirst("img")
             SManga.create().apply {
                 this.url = url.substringAfter(baseUrl).ifEmpty { url.substringAfter("://") }
-                title = element.text().ifBlank { url.substringAfterLast('/') }
-                thumbnail_url = card?.selectFirst("img")?.attr("abs:src") ?: card?.selectFirst("img")?.attr("abs:data-src")
+                title = element.attr("title").ifBlank { element.text() }
+                    .ifBlank { img?.attr("alt") }?.ifBlank { slug }.orEmpty()
+                thumbnail_url = img?.httpImageUrl()
+                    ?: "https://img-r2.2xstorage.com/thumb/$slug.webp"
             }
         }.distinctBy { it.url }
         return MangasPage(mangas, false)
@@ -77,8 +82,8 @@ class Manganato : HttpSource() {
         return SManga.create().apply {
             url = response.request.url.toString().substringAfter(baseUrl)
             title = doc.selectFirst("h1")?.text() ?: ""
-            thumbnail_url = doc.selectFirst(".story-info-right img, .info-image img, meta[property='og:image']")
-                ?.attr("abs:src") ?: doc.selectFirst("meta[property='og:image']")?.attr("content")
+            thumbnail_url = doc.selectFirst("img[src*='2xstorage.com'], .info-image img, meta[property='og:image']")
+                ?.httpImageUrl() ?: doc.selectFirst("meta[property='og:image']")?.attr("content")?.toHttpUrl()
             description = doc.selectFirst("#panel-story-description, .panel-story-info-description, .story-detail p")?.text() ?: ""
             genre = doc.select(".story-info-right .a-h, a[href*='/genre/']").joinToString { it.text() }
             status = when {
@@ -91,21 +96,33 @@ class Manganato : HttpSource() {
 
     // ============================== Chapters =============================
 
-    override fun chapterListRequest(manga: SManga): Request =
-        GET("$baseUrl${manga.url}", headers)
+    override fun chapterListRequest(manga: SManga): Request {
+        val slug = manga.url.trimEnd('/').substringAfterLast('/')
+        return GET("$baseUrl/api/manga/$slug/chapters", headers)
+    }
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
-        return doc.select("ul.row-content-chapter a.chapter-name, a.chapter-name").mapNotNull { element ->
-            val url = element.attr("href")
-            if (!url.contains("/chapter-")) return@mapNotNull null
+        val json = runCatching {
+            JsonParser.parseString(response.body?.string() ?: "").asJsonObject
+        }.getOrNull() ?: return emptyList()
+        val slug = response.request.url.toString().substringBefore("/chapters")
+            .substringAfterLast('/')
+        val chapters = json.getAsJsonObject("data")?.get("chapters")
+            ?.takeIf { it.isJsonArray }?.asJsonArray ?: return emptyList()
+        return chapters.mapNotNull { element ->
+            if (!element.isJsonObject) return@mapNotNull null
+            val obj = element.asJsonObject
+            val chapterSlug = obj.get("chapter_slug")?.asString ?: return@mapNotNull null
+            val num = obj.get("chapter_num")?.takeIf { it.isJsonPrimitive }?.asString
+                ?: Regex("""(\d+(?:\.\d+)?)""").find(chapterSlug)?.groupValues?.get(1)
+                ?: return@mapNotNull null
             SChapter.create().apply {
-                this.url = url.substringAfter(baseUrl).ifEmpty { url.substringAfter("://") }
-                name = element.text().ifBlank { url.substringAfterLast('/') }
-                val num = Regex("""chapter-([\d.]+)""").find(url)?.groupValues?.get(1)
-                chapter_number = num?.toFloatOrNull() ?: 0F
+                url = "/manga/$slug/$chapterSlug"
+                name = obj.get("chapter_name")?.takeIf { it.isJsonPrimitive }?.asString
+                    ?.ifBlank { "Chapter $num" } ?: "Chapter $num"
+                chapter_number = num.toFloatOrNull() ?: 0F
             }
-        }.distinctBy { it.url }.sortedByDescending { it.chapter_number }
+        }.sortedByDescending { it.chapter_number }
     }
 
     // =============================== Pages ===============================
@@ -117,9 +134,7 @@ class Manganato : HttpSource() {
 
     override fun pageListParse(response: Response): List<Page> {
         val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
-        val urls = doc.select("div.container-chapter-reader img[src]").mapNotNull { img ->
-            img.attr("abs:src").ifBlank { null }
-        }
+        val urls = doc.select("div.container-chapter-reader img[src]").mapNotNull { it.httpImageUrl() }
         return urls.mapIndexed { index, url -> Page(index, response.request.url.toString(), url) }
     }
 
@@ -127,6 +142,16 @@ class Manganato : HttpSource() {
         GET(page.imageUrl!!, headers)
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
+
+    // ============================= Utilities =============================
+
+    private fun Element.httpImageUrl(): String? =
+        attr("abs:data-src").ifEmpty { attr("abs:src") }.toHttpUrl()
+
+    private fun String.toHttpUrl(): String? {
+        val raw = trim()
+        return raw.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+    }
 
     companion object {
         private const val BROWSER_UA =

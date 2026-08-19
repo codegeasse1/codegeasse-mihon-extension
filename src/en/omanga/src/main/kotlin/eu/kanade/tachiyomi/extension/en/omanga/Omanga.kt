@@ -10,6 +10,8 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
 /*
@@ -63,7 +65,7 @@ class Omanga : HttpSource() {
             SManga.create().apply {
                 this.url = url
                 title = element.text().ifBlank { img?.attr("alt") }?.ifBlank { slug }.orEmpty()
-                thumbnail_url = img?.attr("abs:src") ?: img?.attr("abs:data-src")
+                thumbnail_url = img?.httpImageUrl()
             }
         }.distinctBy { it.url }
         return MangasPage(mangas, false)
@@ -80,7 +82,7 @@ class Omanga : HttpSource() {
             url = response.request.url.toString().substringAfter(baseUrl)
             title = doc.selectFirst("h1")?.text() ?: ""
             thumbnail_url = doc.selectFirst("img[src*='opics.online'], meta[property='og:image']")
-                ?.attr("abs:src") ?: doc.selectFirst("meta[property='og:image']")?.attr("content")
+                ?.httpImageUrl() ?: doc.selectFirst("meta[property='og:image']")?.attr("content")?.toHttpUrl()
             description = doc.selectFirst("[class*='description'], [class*='summary'], .prose")?.text() ?: ""
             genre = doc.select("a[href*='/genre/'], a[href*='/tag/'], [class*='genre'] a").joinToString { it.text() }
             status = when {
@@ -120,7 +122,7 @@ class Omanga : HttpSource() {
     override fun pageListParse(response: Response): List<Page> {
         val body = response.body?.string() ?: ""
         val urls = Regex("""https://opics\.online/media/chapters/[A-Za-z0-9_/-]+\.webp""")
-            .findAll(body).map { it.value }.toList().distinct()
+            .findAll(body).map { it.value.toHttpUrl() }.filterNotNull().toList().distinct()
         return urls.mapIndexed { index, url -> Page(index, response.request.url.toString(), url) }
     }
 
@@ -128,6 +130,16 @@ class Omanga : HttpSource() {
         GET(page.imageUrl!!, headers)
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
+
+    // ============================= Utilities =============================
+
+    private fun Element.httpImageUrl(): String? =
+        attr("abs:data-src").ifEmpty { attr("abs:src") }.toHttpUrl()
+
+    private fun String.toHttpUrl(): String? {
+        val raw = trim()
+        return raw.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+    }
 
     companion object {
         private const val BROWSER_UA =

@@ -11,6 +11,7 @@ import okhttp3.FormBody
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
 /*
@@ -64,7 +65,7 @@ class Mangasushi : HttpSource() {
             SManga.create().apply {
                 this.url = url.substringAfter(baseUrl)
                 title = element.text().ifBlank { img?.attr("alt") }?.ifBlank { url.trimEnd('/').substringAfterLast('/') }.orEmpty()
-                thumbnail_url = img?.attr("abs:src") ?: img?.attr("abs:data-src")
+                thumbnail_url = img?.httpImageUrl()
             }
         }.distinctBy { it.url }
         return MangasPage(mangas, false)
@@ -81,7 +82,7 @@ class Mangasushi : HttpSource() {
             url = response.request.url.toString().substringAfter(baseUrl)
             title = doc.selectFirst("h1")?.text() ?: ""
             thumbnail_url = doc.selectFirst(".summary_image img, .tab-summary img, meta[property='og:image']")
-                ?.attr("abs:src") ?: doc.selectFirst("meta[property='og:image']")?.attr("content")
+                ?.httpImageUrl() ?: doc.selectFirst("meta[property='og:image']")?.attr("content")?.toHttpUrl()
             description = doc.selectFirst(".summary__content p, .description-summary p")?.text() ?: ""
             genre = doc.select(".genres-content a, a[href*='/genre/']").joinToString { it.text() }
             status = when {
@@ -128,9 +129,7 @@ class Mangasushi : HttpSource() {
 
     override fun pageListParse(response: Response): List<Page> {
         val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
-        val urls = doc.select(".reading-content img, div.reading-content img").mapNotNull { img ->
-            img.attr("abs:src").ifBlank { img.attr("abs:data-src") }.ifBlank { null }
-        }
+        val urls = doc.select("img.wp-manga-chapter-img, .reading-content img, div.reading-content img").mapNotNull { it.httpImageUrl() }
         return urls.mapIndexed { index, url -> Page(index, response.request.url.toString(), url) }
     }
 
@@ -138,6 +137,16 @@ class Mangasushi : HttpSource() {
         GET(page.imageUrl!!, headers)
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
+
+    // ============================= Utilities =============================
+
+    private fun Element.httpImageUrl(): String? =
+        attr("abs:data-src").ifEmpty { attr("abs:src") }.toHttpUrl()
+
+    private fun String.toHttpUrl(): String? {
+        val raw = trim()
+        return raw.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+    }
 
     companion object {
         private const val BROWSER_UA =

@@ -11,6 +11,7 @@ import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
 /*
@@ -64,7 +65,7 @@ class MangaFreak : HttpSource() {
             SManga.create().apply {
                 this.url = url
                 title = element.text().ifBlank { slug.replace('_', ' ') }
-                thumbnail_url = card?.attr("abs:src")
+                thumbnail_url = card?.httpImageUrl()
                     ?: "https://images.mangafreak.me/manga_images/${slug.lowercase()}.jpg"
             }
         }.distinctBy { it.url }
@@ -81,8 +82,8 @@ class MangaFreak : HttpSource() {
         return SManga.create().apply {
             url = response.request.url.toString().substringAfter(baseUrl)
             title = doc.selectFirst("h1")?.text() ?: ""
-            thumbnail_url = doc.selectFirst("img[src*='manga_images']")?.attr("abs:src")
-                ?: doc.selectFirst("meta[property='og:image']")?.attr("content")
+            thumbnail_url = doc.selectFirst("img[src*='manga_images']")?.httpImageUrl()
+                ?: doc.selectFirst("meta[property='og:image']")?.attr("content")?.toHttpUrl()
             description = doc.selectFirst(".genre_info, .desc, .description")?.text() ?: ""
             genre = doc.select("a[href*='/Genre/']").joinToString { it.text() }
             status = when {
@@ -120,9 +121,7 @@ class MangaFreak : HttpSource() {
 
     override fun pageListParse(response: Response): List<Page> {
         val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
-        val urls = doc.select("img[id=gohere], img[src*='mangafreak.me/mangas/']").mapNotNull { img ->
-            img.attr("abs:src").ifBlank { null }
-        }
+        val urls = doc.select("img[id=gohere], img[src*='mangafreak.me/mangas/']").mapNotNull { it.httpImageUrl() }
         return urls.mapIndexed { index, url -> Page(index, response.request.url.toString(), url) }
     }
 
@@ -130,6 +129,16 @@ class MangaFreak : HttpSource() {
         GET(page.imageUrl!!, headers)
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
+
+    // ============================= Utilities =============================
+
+    private fun Element.httpImageUrl(): String? =
+        attr("abs:data-src").ifEmpty { attr("abs:src") }.toHttpUrl()
+
+    private fun String.toHttpUrl(): String? {
+        val raw = trim()
+        return raw.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+    }
 
     companion object {
         private const val BROWSER_UA =

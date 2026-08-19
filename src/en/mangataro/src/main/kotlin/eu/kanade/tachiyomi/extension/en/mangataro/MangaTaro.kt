@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
@@ -44,7 +45,7 @@ class MangaTaro : HttpSource() {
     // =========================== Browse & Search =========================
 
     override fun popularMangaRequest(page: Int): Request =
-        GET("$baseUrl/?page=$page", headers)
+        GET("$baseUrl/home", headers)
 
     override fun popularMangaParse(response: Response): MangasPage = parseList(response)
 
@@ -70,7 +71,7 @@ class MangaTaro : HttpSource() {
             SManga.create().apply {
                 this.url = url.substringAfter(baseUrl)
                 title = element.text().ifBlank { img?.attr("alt") }?.ifBlank { slug }.orEmpty()
-                thumbnail_url = img?.attr("abs:src") ?: img?.attr("abs:data-src")
+                thumbnail_url = img?.httpImageUrl()
             }
         }.distinctBy { it.url }
         return MangasPage(mangas, false)
@@ -87,7 +88,7 @@ class MangaTaro : HttpSource() {
             url = response.request.url.toString().substringAfter(baseUrl)
             title = doc.selectFirst("h1")?.text() ?: ""
             thumbnail_url = doc.selectFirst("img[src*='content/media'], meta[property='og:image']")
-                ?.attr("abs:src") ?: doc.selectFirst("meta[property='og:image']")?.attr("content")
+                ?.httpImageUrl() ?: doc.selectFirst("meta[property='og:image']")?.attr("content")?.toHttpUrl()
             description = doc.selectFirst(".description, [itemprop=description], .content p")?.text() ?: ""
             genre = doc.select("a[href*='/genre/']").joinToString { it.text() }
             status = when {
@@ -145,7 +146,7 @@ class MangaTaro : HttpSource() {
         val images = json.get("images")?.takeIf { it.isJsonArray }?.asJsonArray ?: return emptyList()
         return images.mapNotNull { element ->
             if (!element.isJsonPrimitive) return@mapNotNull null
-            val url = element.asString.replace("\\/", "/")
+            val url = element.asString.replace("\\/", "/").toHttpUrl() ?: return@mapNotNull null
             Page(images.indexOf(element), "", url)
         }
     }
@@ -156,6 +157,14 @@ class MangaTaro : HttpSource() {
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
 
     // ============================= Utilities =============================
+
+    private fun Element.httpImageUrl(): String? =
+        attr("abs:data-src").ifEmpty { attr("abs:src") }.toHttpUrl()
+
+    private fun String.toHttpUrl(): String? {
+        val raw = trim()
+        return raw.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+    }
 
     private fun mangaIdOf(manga: SManga): String {
         // fall back to fetching the detail page and reading data-manga-id
