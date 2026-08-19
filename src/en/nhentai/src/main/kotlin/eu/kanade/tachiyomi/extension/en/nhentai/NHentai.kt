@@ -1,7 +1,6 @@
 package eu.kanade.tachiyomi.extension.en.nhentai
 
 import com.google.gson.JsonArray
-import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import eu.kanade.tachiyomi.network.GET
@@ -25,6 +24,8 @@ import java.net.URLEncoder
  *     Detail   : /api/v2/galleries/<id>    -> {title:{english,japanese,pretty}, cover, tags, pages:[{number,path}]}
  *     Pages    : https://i1.nhentai.net/<pages[n].path>   (e.g. galleries/<media_id>/<n>.webp)
  *     Thumbs   : https://t1.nhentai.net/<thumbnail path>
+ *
+ *     NOTE: `id` and `upload_date` are JSON NUMBERS, not strings — parse them accordingly.
  */
 class NHentai : HttpSource() {
 
@@ -37,6 +38,7 @@ class NHentai : HttpSource() {
 
     override fun headersBuilder() = super.headersBuilder()
         .set("User-Agent", BROWSER_UA)
+        .set("Accept", "application/json")
 
     // =========================== Browse & Search =========================
 
@@ -69,13 +71,14 @@ class NHentai : HttpSource() {
     }
 
     private fun catalogToManga(obj: JsonObject): SManga? {
-        val id = obj.stringOrNull("id") ?: return null
+        val id = obj.idOrNull() ?: return null
         val thumb = obj.stringOrNull("thumbnail") ?: return null
+        val title = obj.stringOrNull("english_title")
+            ?: obj.stringOrNull("japanese_title")
+        if (title.isNullOrBlank()) return null
         return SManga.create().apply {
             url = "/g/$id/"
-            title = obj.stringOrNull("english_title")
-                ?: obj.stringOrNull("japanese_title")
-                ?: return@apply
+            title = title
             thumbnail_url = thumbUrl(thumb)
         }
     }
@@ -90,7 +93,7 @@ class NHentai : HttpSource() {
 
     override fun mangaDetailsParse(response: Response): SManga {
         val data = responseJsonObject(response) ?: return SManga.create()
-        val id = data.stringOrNull("id") ?: return SManga.create()
+        val id = data.idOrNull() ?: return SManga.create()
         return SManga.create().apply {
             url = "/g/$id/"
             val titleObj = data.get("title")?.takeIf { it.isJsonObject }?.asJsonObject
@@ -122,7 +125,7 @@ class NHentai : HttpSource() {
 
     override fun chapterListParse(response: Response): List<SChapter> {
         val data = responseJsonObject(response) ?: return emptyList()
-        val id = data.stringOrNull("id") ?: return emptyList()
+        val id = data.idOrNull() ?: return emptyList()
         val date = data.get("upload_date")?.takeIf { it.isJsonPrimitive }?.asLong?.times(1000) ?: 0L
         return listOf(SChapter.create().apply {
             url = "/g/$id/"
@@ -174,6 +177,9 @@ class NHentai : HttpSource() {
 
     private fun JsonObject.stringOrNull(key: String): String? =
         get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
+
+    private fun JsonObject.idOrNull(): String? =
+        get("id")?.takeIf { it.isJsonPrimitive }?.asString
 
     companion object {
         private const val BROWSER_UA =
