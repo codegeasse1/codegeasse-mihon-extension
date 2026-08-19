@@ -135,7 +135,7 @@ class Mgeko : HttpSource() {
 
     override fun pageListParse(response: Response): List<Page> {
         val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
-        val urls = doc.select("img[src*='imgsrv5.com/sv2/comic/']").mapNotNull { it.httpImageUrl() }
+        val urls = doc.select("img[src*='imgsrv5.com/']").mapNotNull { it.httpImageUrl() }
         return urls.mapIndexed { index, url -> Page(index, response.request.url.toString(), url) }
     }
 

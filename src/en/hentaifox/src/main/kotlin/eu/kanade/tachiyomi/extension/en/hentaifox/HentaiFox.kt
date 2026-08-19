@@ -15,10 +15,10 @@ import java.io.IOException
 import java.net.URLEncoder
 
 /*
- * HentaiFox (https://hentaifox.com) — a nhentai-style doujinshi gallery.
+ * HentaiFox (https://hentaifox.com) â a nhentai-style doujinshi gallery.
  *
  *     Latest   : /            (div.thumb cards; pagination via next link,
- *                page 2 = /page/2/, page 3+ = /pag/<n>/ — so we follow the
+ *                page 2 = /page/2/, page 3+ = /pag/<n>/ â so we follow the
  *                "Next" link from the previous page instead of building URLs)
  *     Search   : /search/?q=<query>
  *     Detail   : /gallery/<id>/   (h1 title, div.cover img, #load_dir/#load_id/#load_pages)
@@ -69,7 +69,7 @@ class HentaiFox : HttpSource() {
             SManga.create().apply {
                 this.title = title
                 setUrlWithoutDomain(link.absUrl("href"))
-                thumbnail_url = item.selectFirst("img")?.attr("data-src").orEmpty()
+                thumbnail_url = item.selectFirst("img")?.let { it.attr("data-src").ifEmpty { it.attr("abs:src") } }?.toHttpUrl()
             }
         }
         nextUrl = nextPageUrl(doc)
@@ -88,7 +88,7 @@ class HentaiFox : HttpSource() {
         val doc = parseDoc(response)
         return SManga.create().apply {
             title = doc.selectFirst("h1")?.text()?.trim().orEmpty()
-            thumbnail_url = doc.selectFirst("div.cover img")?.attr("src").orEmpty()
+            thumbnail_url = doc.selectFirst("div.cover img")?.let { it.attr("data-src").ifEmpty { it.absUrl("src") } }?.toHttpUrl()
         }
     }
 
@@ -116,16 +116,22 @@ class HentaiFox : HttpSource() {
         val doc = parseDoc(response)
         val dir = doc.selectFirst("#load_dir")?.attr("value").orEmpty()
         val id = doc.selectFirst("#load_id")?.attr("value").orEmpty()
-        val pages = doc.selectFirst("#load_pages")?.attr("value")?.toIntOrNull() ?: 0
-        if (dir.isEmpty() || id.isEmpty() || pages <= 0) return emptyList()
+        val pages = doc.selectFirst("#load_pages")?.attr("value")?.toIntOrNull()
+            ?: doc.select("img[data-src*='t.jpg']").size
+        if (dir.isEmpty() || id.isEmpty() || pages == null || pages <= 0) return emptyList()
         return (1..pages).map { n ->
-            Page(n - 1, imageUrl = "https://i3.hentaifox.com/$dir/$id/$n.jpg")
+            Page(n - 1, imageUrl = "https://i3.hentaifox.com/$dir/$id/$n.webp")
         }
     }
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
 
     // ============================= Utilities =============================
+
+    private fun String.toHttpUrl(): String? {
+        val raw = trim()
+        return raw.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+    }
 
     private fun parseDoc(response: Response): Document =
         Jsoup.parse(response.body?.string() ?: throw IOException("Empty response body"))

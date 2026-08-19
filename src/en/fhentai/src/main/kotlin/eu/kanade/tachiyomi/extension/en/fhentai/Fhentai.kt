@@ -73,7 +73,7 @@ class Fhentai : HttpSource() {
             SManga.create().apply {
                 this.title = title
                 setUrlWithoutDomain(link.absUrl("href"))
-                thumbnail_url = card.selectFirst("img")?.httpImageUrl()
+                thumbnail_url = card.selectFirst("img")?.httpImageUrl()?.webpExt()
             }
         }
         nextUrl = nextPageUrl(doc)
@@ -94,8 +94,8 @@ class Fhentai : HttpSource() {
             title = doc.selectFirst("h1")?.text()?.trim().orEmpty()
                 .ifBlank { doc.title().substringBefore(" | Fhentai").trim() }
             thumbnail_url = doc.selectFirst("meta[property='og:image']")?.attr("content")
-                ?.substringBefore("&thumb=true")?.toHttpUrl()
-                ?: doc.selectFirst("img[src*='thumb=true']")?.absUrl("src")?.toHttpUrl()
+                ?.substringBefore("&thumb=true")?.toHttpUrl()?.webpExt()
+                ?: doc.selectFirst("img[src*='thumb=true']")?.absUrl("src")?.toHttpUrl()?.webpExt()
         }
     }
 
@@ -127,7 +127,7 @@ class Fhentai : HttpSource() {
             ?: doc.title().let {
                 Regex("""\[(\d+) Pages\]""").find(it)?.groupValues?.get(1)?.toIntOrNull()
             }
-            ?: 0
+            ?: if (id.isNotEmpty()) doc.select("img[src*='/api/v1/images/$id/']").size else 0
         if (id.isEmpty() || total <= 0) return emptyList()
         return (1..total).map { n ->
             Page(n - 1, imageUrl = "https://fhentai.net/api/v1/images/$id/$n?ext=webp")
@@ -145,6 +145,8 @@ class Fhentai : HttpSource() {
 
     private fun Element.httpImageUrl(): String? =
         attr("abs:src").ifEmpty { attr("abs:data-src") }.toHttpUrl()
+
+    private fun String.webpExt(): String = replace("ext=avif", "ext=webp")
 
     private fun String.toHttpUrl(): String? {
         val raw = trim()

@@ -6,7 +6,7 @@ plugins {
 // --- Extension metadata -----------------------------------------------
 val extName = "Mgeko"
 val extClass = ".Mgeko"
-val extVersionCode = 2
+val extVersionCode = 3
 val isNsfw = false
 // ----------------------------------------------------------------------
 
