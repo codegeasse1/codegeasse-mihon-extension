@@ -7,7 +7,7 @@ plugins {
 // --- Extension metadata -----------------------------------------------
 val extName = "Kagane"
 val extClass = ".Kagane"
-val extVersionCode = 2
+val extVersionCode = 3
 val isNsfw = true
 // ----------------------------------------------------------------------
 

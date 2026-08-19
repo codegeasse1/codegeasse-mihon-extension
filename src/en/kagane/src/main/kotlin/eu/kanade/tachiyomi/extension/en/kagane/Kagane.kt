@@ -21,7 +21,6 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import okhttp3.Headers
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
@@ -63,11 +62,6 @@ class Kagane : HttpSource(), ConfigurableSource {
         ignoreUnknownKeys = true
         coerceInputValues = true
     }
-
-    // Calls we issue ourselves (warm-up + integrity proof) use a plain
-    // OkHttpClient instead of `network.client`, which is resolved through
-    // the host app's Injekt graph and unavailable on JVM hosts.
-    private val directClient: OkHttpClient by lazy { OkHttpClient() }
 
     // ============================== Settings ==============================
 
@@ -220,7 +214,10 @@ class Kagane : HttpSource(), ConfigurableSource {
         lastBookId = bookId
 
         // The site expects a warm page hit before minting an integrity token.
-        runCatching { directClient.newCall(GET("$baseUrl/", apiHeaders())).execute().close() }
+        // All requests go through `client` (Mihon's network client): it carries the
+        // WebView cookie jar and Mihon's Cloudflare interceptor, which auto-solves
+        // kagane.to's bot-check and retries with a cf_clearance cookie.
+        runCatching { client.newCall(GET("$baseUrl/", apiHeaders())).execute().close() }
 
         val integrity = integrityToken()
 
@@ -238,7 +235,7 @@ class Kagane : HttpSource(), ConfigurableSource {
         val now = System.currentTimeMillis()
         integrityCache?.let { if (integrityExp > now) return it }
 
-        val resp = directClient.newCall(
+        val resp = client.newCall(
             Request.Builder()
                 .url("$baseUrl/api/integrity")
                 .headers(apiHeaders())

@@ -37,7 +37,9 @@ import java.net.URLEncoder
  *     intermediate, which is absent from many Android CA stores — OkHttp then fails with
  *     "CertPathValidatorException: trust anchor for certification not found". This extension
  *     bundles that chain (plus s1.3hentai.xyz's Google Trust Services chain) in a custom
- *     trust manager so the site validates on any device.
+ *     trust manager so the site validates on any device. Validation tries the device store,
+ *     then the bundled roots through Android's TrustManagerFactory, then falls back to
+ *     manual signature-chain verification against the bundled roots.
  */
 class ThreeHentai : HttpSource() {
 
@@ -76,10 +78,27 @@ class ThreeHentai : HttpSource() {
             override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) =
                 defaultTm.checkClientTrusted(chain, authType)
             override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
+                // 1. The device's own CA store (covers devices with the new roots).
                 try {
                     defaultTm.checkServerTrusted(chain, authType)
-                } catch (e: CertificateException) {
+                    return
+                } catch (_: CertificateException) {
+                }
+                // 2. Our bundled roots via Android's TrustManagerFactory.
+                try {
                     extraTm.checkServerTrusted(chain, authType)
+                    return
+                } catch (_: CertificateException) {
+                }
+                // 3. Manual chain validation against the bundled roots — works even
+                //    on devices/Android versions where TMF ignores the custom keystore.
+                try {
+                    validateAgainstBundle(chain)
+                    return
+                } catch (e: CertificateException) {
+                    throw e
+                } catch (e: Exception) {
+                    throw CertificateException("Chain could not be validated", e)
                 }
             }
             override fun getAcceptedIssuers(): Array<X509Certificate> =
@@ -89,15 +108,77 @@ class ThreeHentai : HttpSource() {
 
     private fun bundledTrustManager(): X509TrustManager {
         val store = KeyStore.getInstance(KeyStore.getDefaultType()).apply { load(null, null) }
-        val cf = CertificateFactory.getInstance("X.509")
-        BUNDLED_CERTS.forEachIndexed { index, pem ->
-            val der = android.util.Base64.decode(pem.filterNot { it.isWhitespace() }, android.util.Base64.DEFAULT)
-            store.setCertificateEntry("ca$index", cf.generateCertificate(der.inputStream()))
+        bundledCerts.forEachIndexed { index, cert ->
+            store.setCertificateEntry("ca$index", cert)
         }
         return TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
             .apply { init(store) }
             .trustManagers.filterIsInstance<X509TrustManager>().first()
     }
+
+    private val bundledCerts: List<X509Certificate> by lazy {
+        val cf = CertificateFactory.getInstance("X.509")
+        BUNDLED_CERTS.map { pem ->
+            val der = Base64.decode(pem.filterNot { it.isWhitespace() }, Base64.DEFAULT)
+            cf.generateCertificate(der.inputStream()) as X509Certificate
+        }
+    }
+
+    /**
+     * PKIX-lite chain validation that only needs the served chain plus the bundled
+     * certificates. Walks from the leaf up (served certs first, then bundled ones),
+     * verifying every signature link, and requires the path to end at a bundled
+     * self-signed root. Hostname verification is handled separately by OkHttp.
+     */
+    private fun validateAgainstBundle(chain: Array<X509Certificate>) {
+        val leaf = chain.first()
+        leaf.checkValidity()
+
+        val pool = chain.toMutableList() + bundledCerts
+        val path = mutableListOf(leaf)
+        val used = mutableSetOf(leaf)
+
+        while (true) {
+            val current = path.last()
+            if (current.subjectX500Principal == current.issuerX500Principal) break
+            val parent = pool.firstOrNull { cand ->
+                !used.contains(cand) &&
+                    (cand.subjectX500Principal == current.issuerX500Principal ||
+                        cand.subjectX500Principal == current.subjectX500Principal) &&
+                    verifiesSignature(current, cand)
+            } ?: break
+            path.add(parent)
+            used.add(parent)
+            if (path.size > 10) break
+        }
+
+        val anchor = path.last()
+        if (anchor.subjectX500Principal != anchor.issuerX500Principal) {
+            throw CertificateException("No bundled trust anchor for ${leaf.subjectX500Principal.name}")
+        }
+        val anchorInBundle = bundledCerts.any { sameKey(it, anchor) }
+        if (!anchorInBundle) {
+            throw CertificateException("Trust anchor not in bundled roots: ${anchor.subjectX500Principal.name}")
+        }
+        for (cert in path) {
+            cert.checkValidity()
+        }
+    }
+
+    private fun verifiesSignature(child: X509Certificate, parent: X509Certificate): Boolean =
+        try {
+            child.verify(parent.publicKey)
+            true
+        } catch (_: Exception) {
+            false
+        }
+
+    private fun sameKey(a: X509Certificate, b: X509Certificate): Boolean =
+        try {
+            a.publicKey.encoded.contentEquals(b.publicKey.encoded)
+        } catch (_: Exception) {
+            false
+        }
 
 
     // =========================== Browse & Search =========================
