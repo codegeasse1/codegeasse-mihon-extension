@@ -55,7 +55,7 @@ class WeebCentral : HttpSource() {
     override fun getFilterList(): FilterList = FilterList()
 
     private fun parseList(response: Response): MangasPage {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         val items = doc.select("a[href^='/series/']")
         val mangas = items.mapNotNull { element ->
             val url = element.attr("href")
@@ -77,7 +77,7 @@ class WeebCentral : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun mangaDetailsParse(response: Response): SManga {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return SManga.create().apply {
             url = response.request.url.toString().substringAfter(baseUrl)
             title = doc.selectFirst("h1")?.text() ?: ""
@@ -99,7 +99,7 @@ class WeebCentral : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return doc.select("a[href^='/chapters/']").mapNotNull { element ->
             val url = element.attr("href")
             if (!Regex("""/chapters/[A-Za-z0-9]+$""").containsMatchIn(url.trimEnd('/'))) return@mapNotNull null
@@ -120,7 +120,7 @@ class WeebCentral : HttpSource() {
         GET("$baseUrl${chapter.url}", headers)
 
     override fun pageListParse(response: Response): List<Page> {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         val preload = doc.selectFirst("link[rel=preload][href*='planeptune.us']")?.attr("abs:href") ?: return emptyList()
         val baseMatch = Regex("""^(https://[^/]+/manga/[^/]+/\d{3,4})-\d{3}\.png$""").find(preload)
             ?: return emptyList()

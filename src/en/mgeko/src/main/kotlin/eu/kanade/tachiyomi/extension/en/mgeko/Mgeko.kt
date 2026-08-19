@@ -53,7 +53,7 @@ class Mgeko : HttpSource() {
     override fun getFilterList(): FilterList = FilterList()
 
     private fun parseList(response: Response): MangasPage {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         val items = doc.select("a[href*='/manga/']")
         val mangas = items.mapNotNull { element ->
             val url = element.attr("href")
@@ -74,7 +74,7 @@ class Mgeko : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun mangaDetailsParse(response: Response): SManga {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return SManga.create().apply {
             url = response.request.url.toString().substringAfter(baseUrl)
             title = doc.selectFirst("h1")?.text() ?: ""
@@ -96,7 +96,7 @@ class Mgeko : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return doc.select(".chapter-list li a").mapNotNull { element ->
             val url = element.attr("href")
             if (!url.contains("/reader/en/")) return@mapNotNull null
@@ -117,7 +117,7 @@ class Mgeko : HttpSource() {
         GET("$baseUrl${chapter.url}", headers)
 
     override fun pageListParse(response: Response): List<Page> {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         val urls = doc.select("img[src*='imgsrv5.com/sv2/comic/']").mapNotNull { img ->
             img.attr("abs:src").ifBlank { img.attr("abs:data-src") }.ifBlank { null }
         }

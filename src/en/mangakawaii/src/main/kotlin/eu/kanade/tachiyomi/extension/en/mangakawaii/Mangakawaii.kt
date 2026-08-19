@@ -56,7 +56,7 @@ class Mangakawaii : HttpSource() {
     override fun getFilterList(): FilterList = FilterList()
 
     private fun parseList(response: Response): MangasPage {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         val items = doc.select("a[href*='/manga/']")
         val mangas = items.mapNotNull { element ->
             val url = element.attr("href")
@@ -78,7 +78,7 @@ class Mangakawaii : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun mangaDetailsParse(response: Response): SManga {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return SManga.create().apply {
             url = response.request.url.toString().substringAfter(baseUrl)
             title = doc.selectFirst("h1")?.text() ?: ""
@@ -100,7 +100,7 @@ class Mangakawaii : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return doc.select("a[href*='/manga/'][href*='/en/']").mapNotNull { element ->
             val url = element.attr("href")
             val num = Regex("""/en/(\d+)$""").find(url.trimEnd('/'))?.groupValues?.get(1) ?: return@mapNotNull null
@@ -120,7 +120,7 @@ class Mangakawaii : HttpSource() {
         GET("$baseUrl${chapter.url}", headers)
 
     override fun pageListParse(response: Response): List<Page> {
-        val body = response.body.string()
+        val body = response.body?.string() ?: ""
         val pagesMatch = Regex("""var\s+pages\s*=\s*(\[[\s\S]*?\]);""").find(body) ?: return emptyList()
         val oeuvre = Regex("""var\s+oeuvre_slug\s*=\s*"([^"]+)"""").find(body)?.groupValues?.get(1)
             ?: return emptyList()

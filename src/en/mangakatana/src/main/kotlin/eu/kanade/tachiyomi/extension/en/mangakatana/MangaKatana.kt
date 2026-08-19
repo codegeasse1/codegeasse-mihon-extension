@@ -53,7 +53,7 @@ class MangaKatana : HttpSource() {
     override fun getFilterList(): FilterList = FilterList()
 
     private fun parseList(response: Response): MangasPage {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         val items = doc.select("a[href*='/manga/'][href*='.']")
         val mangas = items.mapNotNull { element ->
             val url = element.attr("href")
@@ -74,7 +74,7 @@ class MangaKatana : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun mangaDetailsParse(response: Response): SManga {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return SManga.create().apply {
             url = response.request.url.toString().substringAfter(baseUrl).trimEnd('/')
             title = doc.selectFirst("h1")?.text() ?: ""
@@ -96,7 +96,7 @@ class MangaKatana : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return doc.select("table.table a[href*='/c'], .chapter a[href*='/c']").mapNotNull { element ->
             val url = element.attr("href")
             if (!Regex("""/c[\d.]+$""").containsMatchIn(url.trimEnd('/'))) return@mapNotNull null
@@ -117,7 +117,7 @@ class MangaKatana : HttpSource() {
         GET("$baseUrl${chapter.url}", headers)
 
     override fun pageListParse(response: Response): List<Page> {
-        val body = response.body.string()
+        val body = response.body?.string() ?: ""
         val match = Regex("""var\s+thzq\s*=\s*\[([\s\S]*?)\]""").find(body) ?: return emptyList()
         val urls = Regex("""'([^']+)'""").findAll(match.groupValues[1]).map { it.groupValues[1] }.toList()
         return urls.mapIndexed { index, url -> Page(index, response.request.url.toString(), url) }

@@ -60,7 +60,7 @@ class MangaTaro : HttpSource() {
     override fun getFilterList(): FilterList = FilterList()
 
     private fun parseList(response: Response): MangasPage {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         val items = doc.select("a[href*='/manga/']")
         val mangas = items.mapNotNull { element ->
             val url = element.attr("href")
@@ -82,7 +82,7 @@ class MangaTaro : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun mangaDetailsParse(response: Response): SManga {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return SManga.create().apply {
             url = response.request.url.toString().substringAfter(baseUrl)
             title = doc.selectFirst("h1")?.text() ?: ""
@@ -111,7 +111,7 @@ class MangaTaro : HttpSource() {
     }
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val json = runCatching { JsonParser.parseString(response.body.string()).asJsonObject }.getOrNull()
+        val json = runCatching { JsonParser.parseString(response.body?.string() ?: "").asJsonObject }.getOrNull()
             ?: return emptyList()
         val chapters = json.get("chapters")?.takeIf { it.isJsonArray }?.asJsonArray ?: return emptyList()
         return chapters.mapNotNull { element ->
@@ -140,7 +140,7 @@ class MangaTaro : HttpSource() {
     }
 
     override fun pageListParse(response: Response): List<Page> {
-        val json = runCatching { JsonParser.parseString(response.body.string()).asJsonObject }.getOrNull()
+        val json = runCatching { JsonParser.parseString(response.body?.string() ?: "").asJsonObject }.getOrNull()
             ?: return emptyList()
         val images = json.get("images")?.takeIf { it.isJsonArray }?.asJsonArray ?: return emptyList()
         return images.mapNotNull { element ->

@@ -54,7 +54,7 @@ class MangaFreak : HttpSource() {
     override fun getFilterList(): FilterList = FilterList()
 
     private fun parseList(response: Response): MangasPage {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         val items = doc.select("a[href^='/Manga/']")
         val mangas = items.mapNotNull { element ->
             val url = element.attr("href")
@@ -77,7 +77,7 @@ class MangaFreak : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun mangaDetailsParse(response: Response): SManga {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return SManga.create().apply {
             url = response.request.url.toString().substringAfter(baseUrl)
             title = doc.selectFirst("h1")?.text() ?: ""
@@ -99,7 +99,7 @@ class MangaFreak : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return doc.select("a[href^='/Read1_']").mapNotNull { element ->
             val url = element.attr("href")
             val num = url.substringAfterLast('_').toFloatOrNull() ?: return@mapNotNull null
@@ -119,7 +119,7 @@ class MangaFreak : HttpSource() {
         GET("$baseUrl${chapter.url}", headers)
 
     override fun pageListParse(response: Response): List<Page> {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         val urls = doc.select("img[id=gohere], img[src*='mangafreak.me/mangas/']").mapNotNull { img ->
             img.attr("abs:src").ifBlank { null }
         }

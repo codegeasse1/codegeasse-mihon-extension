@@ -53,7 +53,7 @@ class Omanga : HttpSource() {
     override fun getFilterList(): FilterList = FilterList()
 
     private fun parseList(response: Response): MangasPage {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         val items = doc.select("a[href*='/manga/']")
         val mangas = items.mapNotNull { element ->
             val url = element.attr("href")
@@ -75,7 +75,7 @@ class Omanga : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun mangaDetailsParse(response: Response): SManga {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return SManga.create().apply {
             url = response.request.url.toString().substringAfter(baseUrl)
             title = doc.selectFirst("h1")?.text() ?: ""
@@ -97,7 +97,7 @@ class Omanga : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return doc.select("a[href*='/manga/'][href*='/chapter/']").mapNotNull { element ->
             val url = element.attr("href")
             val num = Regex("""/chapter/(\d+)$""").find(url.trimEnd('/'))?.groupValues?.get(1)
@@ -118,7 +118,7 @@ class Omanga : HttpSource() {
         GET("$baseUrl${chapter.url}", headers)
 
     override fun pageListParse(response: Response): List<Page> {
-        val body = response.body.string()
+        val body = response.body?.string() ?: ""
         val urls = Regex("""https://opics\.online/media/chapters/[A-Za-z0-9_/-]+\.webp""")
             .findAll(body).map { it.value }.toList().distinct()
         return urls.mapIndexed { index, url -> Page(index, response.request.url.toString(), url) }

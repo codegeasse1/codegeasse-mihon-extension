@@ -52,7 +52,7 @@ class Manganato : HttpSource() {
     override fun getFilterList(): FilterList = FilterList()
 
     private fun parseList(response: Response): MangasPage {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         val items = doc.select(".content-homepage-item a.item-title, .search-story-item a.item-title, .panel-search-story .search-story-item a")
         val mangas = items.mapNotNull { element ->
             val url = element.attr("href")
@@ -73,7 +73,7 @@ class Manganato : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun mangaDetailsParse(response: Response): SManga {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return SManga.create().apply {
             url = response.request.url.toString().substringAfter(baseUrl)
             title = doc.selectFirst("h1")?.text() ?: ""
@@ -95,7 +95,7 @@ class Manganato : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return doc.select("ul.row-content-chapter a.chapter-name, a.chapter-name").mapNotNull { element ->
             val url = element.attr("href")
             if (!url.contains("/chapter-")) return@mapNotNull null
@@ -116,7 +116,7 @@ class Manganato : HttpSource() {
         GET("$baseUrl${chapter.url}", headers)
 
     override fun pageListParse(response: Response): List<Page> {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         val urls = doc.select("div.container-chapter-reader img[src]").mapNotNull { img ->
             img.attr("abs:src").ifBlank { null }
         }

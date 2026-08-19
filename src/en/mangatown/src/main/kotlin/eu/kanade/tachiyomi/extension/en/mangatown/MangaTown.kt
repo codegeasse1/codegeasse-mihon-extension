@@ -53,7 +53,7 @@ class MangaTown : HttpSource() {
     override fun getFilterList(): FilterList = FilterList()
 
     private fun parseList(response: Response): MangasPage {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         val items = doc.select("p.title a[href^='/manga/']")
         val mangas = items.mapNotNull { element ->
             val url = element.attr("href")
@@ -74,7 +74,7 @@ class MangaTown : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun mangaDetailsParse(response: Response): SManga {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return SManga.create().apply {
             url = doc.selectFirst("link[rel=canonical]")?.attr("href")
                 ?.substringAfter(baseUrl) ?: response.request.url.toString().substringAfter(baseUrl)
@@ -97,7 +97,7 @@ class MangaTown : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return doc.select("a[href*='/c'][href^='/manga/']").mapNotNull { element ->
             val url = element.attr("href")
             val match = Regex("""/c(\d+(?:\.\d+)?)/?$""").find(url.trimEnd('/')) ?: return@mapNotNull null
@@ -119,7 +119,7 @@ class MangaTown : HttpSource() {
     }
 
     override fun pageListParse(response: Response): List<Page> {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         val urls = doc.select("img.image[src*='mangahere.org']").mapNotNull { img ->
             val src = img.attr("abs:src")
             if (src.isBlank()) null else src.removePrefix("https:").let { if (it.startsWith("//")) "https:$it" else it }

@@ -54,7 +54,7 @@ class Mangapill : HttpSource() {
     override fun getFilterList(): FilterList = FilterList()
 
     private fun parseList(response: Response): MangasPage {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         val mangas = doc.select("a[href*='/manga/']").mapNotNull { element ->
             val url = element.attr("href")
             val slug = url.substringAfter("/manga/", "")
@@ -76,7 +76,7 @@ class Mangapill : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun mangaDetailsParse(response: Response): SManga {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return SManga.create().apply {
             url = response.request.url.toString().substringAfter(baseUrl)
             title = doc.selectFirst("h1")?.text() ?: ""
@@ -98,7 +98,7 @@ class Mangapill : HttpSource() {
         GET("$baseUrl${manga.url}", headers)
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         return doc.select("a[href*='/chapters/']").mapNotNull { element ->
             val url = element.attr("href")
             if (!url.startsWith("/chapters/")) return@mapNotNull null
@@ -120,7 +120,7 @@ class Mangapill : HttpSource() {
         GET("$baseUrl${chapter.url}", headers)
 
     override fun pageListParse(response: Response): List<Page> {
-        val doc = Jsoup.parse(response.body.string(), response.request.url.toString())
+        val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
         val urls = doc.select("img.js-page[data-src]").mapNotNull { it.attr("abs:data-src") }
         return urls.mapIndexed { index, url -> Page(index, response.request.url.toString(), url) }
     }
