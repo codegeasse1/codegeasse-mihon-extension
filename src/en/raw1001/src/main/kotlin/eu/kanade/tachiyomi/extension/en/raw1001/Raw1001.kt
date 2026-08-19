@@ -137,7 +137,7 @@ class Raw1001 : HttpSource() {
                 ?: return emptyList()
             val urls = Regex("""href=['"]([^'"]+)['"]\s+class=['"]readImg['"]""").findAll(html)
                 .map { it.groupValues[1].replace("\\/", "/") }.toList()
-            return urls.mapIndexed { index, url -> Page(index, chapter.url, url) }
+            return urls.mapIndexed { index, url -> Page(index, response.request.url.toString(), url) }
         }
     }
 
