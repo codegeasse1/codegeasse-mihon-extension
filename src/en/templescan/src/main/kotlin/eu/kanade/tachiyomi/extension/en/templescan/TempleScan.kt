@@ -50,9 +50,10 @@ class TempleScan : HttpSource() {
 
     override fun headersBuilder() = super.headersBuilder()
         .set("User-Agent", BROWSER_UA)
-        .set("Referer", "$baseUrl/")
         // NOTE: media.templetoons.com (covers + chapter images) rejects ANY request
         // carrying an "Origin" header (verified: loads fine without it, 403/empty with it).
+        // It also serves every image happily with no Referer at all (verified in-browser),
+        // so keep the header set minimal — UA + cookies only — for maximum CDN tolerance.
         // MangaCoverFetcher and imageRequest both inherit `headers`, so no Origin here.
         // Do NOT add .set("Origin", baseUrl) back.
 

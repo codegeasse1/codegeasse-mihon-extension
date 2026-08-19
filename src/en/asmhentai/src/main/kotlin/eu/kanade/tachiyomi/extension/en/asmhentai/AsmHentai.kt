@@ -62,9 +62,12 @@ class AsmHentai : HttpSource() {
         val mangas = doc.select("div.preview_item").mapNotNull { item ->
             val link = item.selectFirst("a[href*='/g/']") ?: return@mapNotNull null
             val title = item.selectFirst("h2.caption")?.text()?.trim() ?: return@mapNotNull null
-            val thumb = item.selectFirst("img")?.attr("data-src")
+            // The first <img> in a card is the tiny "flag" icon (plain src), and the
+            // actual cover is the lazy-loaded one carrying a data-src, so target that.
+            val coverImg = item.selectFirst("img[data-src]") ?: item.selectFirst("img")
+            val thumb = coverImg?.attr("data-src")
                 ?.takeIf { it.isNotBlank() }
-                ?: item.selectFirst("img")?.absUrl("src").orEmpty()
+                ?: coverImg?.absUrl("src").orEmpty()
             if (title.isBlank()) return@mapNotNull null
             SManga.create().apply {
                 this.title = title

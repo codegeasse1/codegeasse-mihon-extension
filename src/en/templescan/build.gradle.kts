@@ -6,7 +6,7 @@ plugins {
 // --- Extension metadata -----------------------------------------------
 val extName = "TempleScan"
 val extClass = ".TempleScan"
-val extVersionCode = 3
+val extVersionCode = 4
 val isNsfw = true
 // ----------------------------------------------------------------------
 
