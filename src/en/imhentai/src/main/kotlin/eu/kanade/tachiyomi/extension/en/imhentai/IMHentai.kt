@@ -22,6 +22,11 @@ import java.net.URLEncoder
  *     Detail   : /gallery/<id>/   (h1 title, cover, #load_server/#load_dir/#load_id/#load_pages)
  *     Reader   : /view/<id>/<n>/  (#gimg src)
  *     Pages    : https://m<server>.imhentai.xxx/<load_dir>/<load_id>/<n>.webp
+ *
+ *     NOTE: the site's pagination links are protocol-relative (//imhentai.xxx?page=N),
+ *     so every Jsoup parse must carry the response URL as its base URI — otherwise
+ *     absUrl() throws "IllegalArgumentException: Expected URL scheme 'http' or 'https'
+ *     but no scheme was found".
  */
 class IMHentai : HttpSource() {
 
@@ -67,7 +72,7 @@ class IMHentai : HttpSource() {
             SManga.create().apply {
                 this.title = title
                 setUrlWithoutDomain(link.absUrl("href"))
-                thumbnail_url = item.selectFirst("img")?.attr("data-src").orEmpty()
+                thumbnail_url = item.selectFirst("img")?.absUrl("data-src").orEmpty()
             }
         }
         nextUrl = nextPageUrl(doc)
@@ -87,7 +92,7 @@ class IMHentai : HttpSource() {
         return SManga.create().apply {
             title = doc.selectFirst("h1")?.text()?.trim().orEmpty()
             thumbnail_url = doc.selectFirst("a[href^='/view/'] img[data-src$='cover.jpg']")
-                ?.attr("data-src").orEmpty()
+                ?.absUrl("data-src").orEmpty()
         }
     }
 
@@ -128,15 +133,19 @@ class IMHentai : HttpSource() {
     // ============================= Utilities =============================
 
     private fun parseDoc(response: Response): Document =
-        Jsoup.parse(response.body?.string() ?: throw IOException("Empty response body"))
+        Jsoup.parse(response.body?.string() ?: throw IOException("Empty response body"), response.request.url.toString())
 
     private fun nextPageUrl(doc: Document): String? {
         val next = doc.select("ul.pagination a.page-link").firstOrNull { it.text().trim().startsWith("Next") }
             ?: doc.select("a[rel='next']").firstOrNull()
+            ?: doc.select("ul.pagination a.page-link").lastOrNull { link ->
+                val href = link.attr("href")
+                href.isNotEmpty() && href != "#"
+            }
             ?: return null
         val href = next.attr("href")
         if (href.isEmpty() || href == "#") return null
-        return next.absUrl("href")
+        return next.absUrl("href").takeIf { it.startsWith("http://") || it.startsWith("https://") }
     }
 
     companion object {
