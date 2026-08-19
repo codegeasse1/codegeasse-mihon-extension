@@ -11,6 +11,7 @@ import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
 import java.io.IOException
 import java.net.URLEncoder
 
@@ -19,8 +20,12 @@ import java.net.URLEncoder
  *
  *     Latest   : /            (div.doujin cards; pagination /2, /3, ... via next link)
  *     Search   : /search?q=<query>
- *     Detail   : /d/<id>/     (h1 title, cover img, page thumbs s1.3hentai.xyz/<dir>/<n>t.jpg)
+ *     Detail   : /d/<id>/     (h1 title, cover img[data-src$='cover.jpg'], page thumbs s1.3hentai.xyz/<dir>/<n>t.jpg)
  *     Pages    : https://s1.3hentai.xyz/<dir>/<n>.jpg   (strip the trailing 't')
+ *
+ *     NOTE: 3hentai.net is behind Cloudflare with TLS-level bot protection; on some devices
+ *     okhttp's TLS handshake is rejected there (SSLHandshakeException) — that is server-side
+ *     and cannot be fixed from the extension. This file fixes the URL handling.
  */
 class ThreeHentai : HttpSource() {
 
@@ -66,7 +71,7 @@ class ThreeHentai : HttpSource() {
             SManga.create().apply {
                 this.title = title
                 setUrlWithoutDomain(link.absUrl("href"))
-                thumbnail_url = item.selectFirst("img")?.attr("data-src").orEmpty()
+                thumbnail_url = item.selectFirst("img")?.httpImageUrl()
             }
         }
         nextUrl = nextPageUrl(doc)
@@ -85,7 +90,8 @@ class ThreeHentai : HttpSource() {
         val doc = parseDoc(response)
         return SManga.create().apply {
             title = doc.selectFirst("h1")?.text()?.trim().orEmpty()
-            thumbnail_url = doc.selectFirst("img[data-src$='cover.jpg']")?.attr("data-src").orEmpty()
+            thumbnail_url = doc.selectFirst("img[data-src$='cover.jpg']")?.httpImageUrl()
+                ?: doc.selectFirst("meta[property='og:image']")?.attr("content")?.toHttpUrl()
         }
     }
 
@@ -112,10 +118,10 @@ class ThreeHentai : HttpSource() {
     override fun pageListParse(response: Response): List<Page> {
         val doc = parseDoc(response)
         // All page thumbs are rendered server-side as <dir>/<n>t.jpg — full image strips the 't'.
-        return doc.select("img[data-src$='t.jpg']").mapIndexed { i, img ->
-            val thumb = img.attr("data-src")
+        return doc.select("img[data-src$='t.jpg']").mapIndexedNotNull { i, img ->
+            val thumb = img.attr("abs:data-src").ifEmpty { img.attr("abs:src") }
             val full = thumb.removeSuffix("t.jpg") + ".jpg"
-            Page(i, imageUrl = full)
+            full.toHttpUrl()?.let { Page(i, imageUrl = it) }
         }
     }
 
@@ -125,6 +131,14 @@ class ThreeHentai : HttpSource() {
 
     private fun parseDoc(response: Response): Document =
         Jsoup.parse(response.body?.string() ?: throw IOException("Empty response body"))
+
+    private fun Element.httpImageUrl(): String? =
+        attr("abs:data-src").ifEmpty { attr("abs:src") }.toHttpUrl()
+
+    private fun String.toHttpUrl(): String? {
+        val raw = trim()
+        return raw.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+    }
 
     private fun nextPageUrl(doc: Document): String? {
         doc.selectFirst("a[rel='next']")?.let { return it.absUrl("href") }

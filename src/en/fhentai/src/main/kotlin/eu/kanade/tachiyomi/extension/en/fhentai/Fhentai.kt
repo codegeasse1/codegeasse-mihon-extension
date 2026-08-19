@@ -11,6 +11,7 @@ import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
 import java.io.IOException
 import java.net.URLEncoder
 
@@ -20,8 +21,11 @@ import java.net.URLEncoder
  *     Latest   : /            (div.card-wrapper[data-id] cards; pagination via rel=next)
  *     Search   : /search?q=<query>
  *     Detail   : /f/<id>      (h1 title, PAGES meta, cover = image 0)
- *     Pages    : https://fhentai.net/api/v1/images/<id>/<n>?ext=avif   (n = 1..N)
- *     Thumbs   : https://fhentai.net/api/v1/images/<id>/<n>?ext=avif&thumb=true
+ *     Pages    : https://fhentai.net/api/v1/images/<id>/<n>?ext=webp   (n = 1..N)
+ *     Thumbs   : https://fhentai.net/api/v1/images/<id>/<n>?ext=webp&thumb=true
+ *
+ *     NOTE: card/cover image srcs are RELATIVE (/api/v1/images/...) — must be resolved
+ *     against the base URL and validated as http(s) before use.
  */
 class Fhentai : HttpSource() {
 
@@ -69,7 +73,7 @@ class Fhentai : HttpSource() {
             SManga.create().apply {
                 this.title = title
                 setUrlWithoutDomain(link.absUrl("href"))
-                thumbnail_url = card.selectFirst("img")?.attr("src").orEmpty()
+                thumbnail_url = card.selectFirst("img")?.httpImageUrl()
             }
         }
         nextUrl = nextPageUrl(doc)
@@ -89,9 +93,9 @@ class Fhentai : HttpSource() {
         return SManga.create().apply {
             title = doc.selectFirst("h1")?.text()?.trim().orEmpty()
                 .ifBlank { doc.title().substringBefore(" | Fhentai").trim() }
-            thumbnail_url = doc.selectFirst("meta[property='og:image']")?.absUrl("content")
-                ?.ifBlank { null }
-                ?: doc.selectFirst("img[src*='thumb=true']")?.absUrl("src").orEmpty()
+            thumbnail_url = doc.selectFirst("meta[property='og:image']")?.attr("content")
+                ?.substringBefore("&thumb=true")?.toHttpUrl()
+                ?: doc.selectFirst("img[src*='thumb=true']")?.absUrl("src")?.toHttpUrl()
         }
     }
 
@@ -126,7 +130,7 @@ class Fhentai : HttpSource() {
             ?: 0
         if (id.isEmpty() || total <= 0) return emptyList()
         return (1..total).map { n ->
-            Page(n - 1, imageUrl = "https://fhentai.net/api/v1/images/$id/$n?ext=avif")
+            Page(n - 1, imageUrl = "https://fhentai.net/api/v1/images/$id/$n?ext=webp")
         }
     }
 
@@ -138,6 +142,14 @@ class Fhentai : HttpSource() {
 
     private fun parseDoc(response: Response): Document =
         Jsoup.parse(response.body?.string() ?: throw IOException("Empty response body"))
+
+    private fun Element.httpImageUrl(): String? =
+        attr("abs:src").ifEmpty { attr("abs:data-src") }.toHttpUrl()
+
+    private fun String.toHttpUrl(): String? {
+        val raw = trim()
+        return raw.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+    }
 
     private fun nextPageUrl(doc: Document): String? {
         val next = doc.selectFirst("link[rel='next']")
