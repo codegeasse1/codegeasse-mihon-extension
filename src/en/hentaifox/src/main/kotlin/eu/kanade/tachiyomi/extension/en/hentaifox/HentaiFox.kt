@@ -134,7 +134,7 @@ class HentaiFox : HttpSource() {
     }
 
     private fun parseDoc(response: Response): Document =
-        Jsoup.parse(response.body?.string() ?: throw IOException("Empty response body"))
+        Jsoup.parse(response.body?.string() ?: throw IOException("Empty response body"), response.request.url.toString())
 
     private fun nextPageUrl(doc: Document): String? {
         val next = doc.select("ul.pagination a.page-link").firstOrNull { it.text().trim().startsWith("Next") }
@@ -142,7 +142,7 @@ class HentaiFox : HttpSource() {
             ?: return null
         val href = next.attr("href")
         if (href.isEmpty() || href == "#") return null
-        return next.absUrl("href")
+        return next.absUrl("href").toHttpUrl()
     }
 
     companion object {

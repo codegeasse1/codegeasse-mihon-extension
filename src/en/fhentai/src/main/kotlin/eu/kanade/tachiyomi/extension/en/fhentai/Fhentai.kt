@@ -141,7 +141,7 @@ class Fhentai : HttpSource() {
     private fun galleryIdOf(url: String): String = url.trim('/').substringAfterLast('/')
 
     private fun parseDoc(response: Response): Document =
-        Jsoup.parse(response.body?.string() ?: throw IOException("Empty response body"))
+        Jsoup.parse(response.body?.string() ?: throw IOException("Empty response body"), response.request.url.toString())
 
     private fun Element.httpImageUrl(): String? =
         attr("abs:src").ifEmpty { attr("abs:data-src") }.toHttpUrl()
@@ -159,7 +159,7 @@ class Fhentai : HttpSource() {
             ?: return null
         val href = next.attr("href")
         if (href.isEmpty()) return null
-        return next.absUrl("href").ifEmpty { href }
+        return next.absUrl("href").toHttpUrl()
     }
 
     companion object {
