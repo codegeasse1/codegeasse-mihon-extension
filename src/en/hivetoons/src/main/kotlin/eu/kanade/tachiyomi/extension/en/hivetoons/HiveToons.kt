@@ -58,7 +58,10 @@ class HiveToons : HttpSource() {
 
     override fun popularMangaParse(response: Response): MangasPage {
         val document = response.asDocument()
-        val mangas = document.select("section[aria-busy] .grid > div").mapNotNull(::mangaFromCard)
+        // Cards are <a title> anchors wrapping the cover <img>. The /series/ href filter
+        // matches the thumb anchor (the plain title anchor has no img, so it's skipped).
+        // Also fixes the Latest tab, whose grid is NOT wrapped in <section[aria-busy]>.
+        val mangas = document.select("a[title][href*='/series/']").mapNotNull(::mangaFromCard)
         val hasNextPage = document.selectFirst(
             "nav[aria-label=Pagination] button[aria-label=\"Next page\"]:not([disabled])",
         ) != null
@@ -77,8 +80,7 @@ class HiveToons : HttpSource() {
     override fun searchMangaParse(response: Response): MangasPage =
         popularMangaParse(response)
 
-    private fun mangaFromCard(card: Element): SManga? {
-        val link = card.selectFirst("a[title]") ?: return null
+    private fun mangaFromCard(link: Element): SManga? {
         val img = link.selectFirst("img") ?: return null
         return SManga.create().apply {
             setUrlWithoutDomain(link.absUrl("href"))

@@ -57,14 +57,17 @@ class MangaKatana : HttpSource() {
 
     private fun parseList(response: Response): MangasPage {
         val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
-        val items = doc.select("a[href*='/manga/'][href*='.']")
-        val mangas = items.mapNotNull { element ->
-            val url = element.attr("href")
+        // Each card is a <div class="item"> whose title lives in h3.title a and whose cover is
+        // the img inside .wrap_img. Selecting anchors directly also matched the cover's <a>
+        // (text empty -> falls back to img alt="[Cover]"), producing "[Cover]" for every title.
+        val mangas = doc.select(".item").mapNotNull { card ->
+            val link = card.selectFirst("h3.title a") ?: return@mapNotNull null
+            val url = link.attr("href")
             if (!Regex("""/manga/[^/]+\.[\d]+$""").containsMatchIn(url.trimEnd('/'))) return@mapNotNull null
-            val img = element.selectFirst("img")
+            val img = card.selectFirst(".wrap_img img")
             SManga.create().apply {
                 this.url = url.substringAfter(baseUrl).trimEnd('/')
-                title = element.text().ifBlank { img?.attr("alt") }?.ifBlank { url.substringAfterLast('/').substringBefore('.') }.orEmpty()
+                title = link.text().ifBlank { img?.attr("alt") }?.ifBlank { url.substringAfterLast('/').substringBefore('.') }.orEmpty()
                 thumbnail_url = img?.httpImageUrl()
             }
         }.distinctBy { it.url }

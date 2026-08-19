@@ -51,7 +51,10 @@ class TempleScan : HttpSource() {
     override fun headersBuilder() = super.headersBuilder()
         .set("User-Agent", BROWSER_UA)
         .set("Referer", "$baseUrl/")
-        .set("Origin", baseUrl)
+        // NOTE: media.templetoons.com (covers + chapter images) rejects ANY request
+        // carrying an "Origin" header (verified: loads fine without it, 403/empty with it).
+        // MangaCoverFetcher and imageRequest both inherit `headers`, so no Origin here.
+        // Do NOT add .set("Origin", baseUrl) back.
 
     private val rscHeaders = headersBuilder().set("rsc", "1").build()
 
@@ -261,7 +264,7 @@ class TempleScan : HttpSource() {
     }
 
     override fun imageRequest(page: Page): Request =
-        GET(page.imageUrl ?: page.url, headers)
+        GET(page.imageUrl ?: page.url, headers.newBuilder().removeAll("Origin").build())
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
 

@@ -124,7 +124,10 @@ class HentaiNexus : HttpSource() {
     // ============================= Utilities =============================
 
     private fun parseDoc(response: Response): Document =
-        Jsoup.parse(response.body?.string() ?: throw IOException("Empty response body"))
+        Jsoup.parse(
+            response.body?.string() ?: throw IOException("Empty response body"),
+            response.request.url.toString(),
+        )
 
     private fun nextPageUrl(doc: Document): String? {
         val next = doc.selectFirst("a.pagination-next") ?: return null

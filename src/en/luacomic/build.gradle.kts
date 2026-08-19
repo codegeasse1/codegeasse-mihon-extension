@@ -6,7 +6,7 @@ plugins {
 // --- Extension metadata -----------------------------------------------
 val extName = "LuaComic"
 val extClass = ".LuaComic"
-val extVersionCode = 1
+val extVersionCode = 2
 val isNsfw = false
 // ----------------------------------------------------------------------
 

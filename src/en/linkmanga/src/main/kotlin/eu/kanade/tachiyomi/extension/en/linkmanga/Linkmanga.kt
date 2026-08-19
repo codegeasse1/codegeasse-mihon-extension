@@ -31,6 +31,12 @@ class Linkmanga : HttpSource() {
 
     override fun headersBuilder() = super.headersBuilder()
         .set("User-Agent", BROWSER_UA)
+        // Full browser header set: the site sits behind Cloudflare which challenges plain
+        // OkHttp requests (Mihon shows "Failed to bypass Cloudflare"), while real browsers
+        // load it fine. Mimic a browser document request so the edge lets us through.
+        .set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
+        .set("Accept-Language", "en-US,en;q=0.9")
+        .set("Upgrade-Insecure-Requests", "1")
         .set("Referer", "$baseUrl/")
 
     // =========================== Browse & Search =========================
@@ -54,14 +60,19 @@ class Linkmanga : HttpSource() {
 
     private fun parseList(response: Response): MangasPage {
         val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
-        val items = doc.select(".page-item-detail a, .c-tabs-item a, a[href*='/manga/']")
-        val mangas = items.mapNotNull { element ->
-            val url = element.attr("href")
+        // The flat anchor selector grabbed tab links ("Manga List"), the cover <a>
+        // (empty text -> img alt like "52381") AND the real title <a>; distinctBy kept
+        // the wrong entries. Scope to cards instead:
+        // browse uses .page-item-detail, search results use .c-tabs-item__content.
+        val mangas = doc.select(".page-item-detail, .c-tabs-item__content").mapNotNull { card ->
+            val link = card.selectFirst(".item-summary .post-title a, .tab-summary .post-title a")
+                ?: return@mapNotNull null
+            val url = link.attr("href")
             if (!url.contains("/manga/") || url.contains("/chapter") || url.contains("/ch-")) return@mapNotNull null
-            val img = element.selectFirst("img")
+            val img = card.selectFirst(".item-thumb img, .tab-thumb img")
             SManga.create().apply {
                 this.url = url.substringAfter(baseUrl)
-                title = element.text().ifBlank { img?.attr("alt") }?.ifBlank { url.trimEnd('/').substringAfterLast('/') }.orEmpty()
+                title = link.text().ifBlank { img?.attr("alt") }?.ifBlank { url.trimEnd('/').substringAfterLast('/') }.orEmpty()
                 thumbnail_url = img?.attr("abs:src") ?: img?.attr("abs:data-src")
             }
         }.distinctBy { it.url }

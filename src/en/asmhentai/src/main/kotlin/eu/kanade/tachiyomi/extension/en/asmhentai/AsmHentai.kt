@@ -128,7 +128,10 @@ class AsmHentai : HttpSource() {
     // ============================= Utilities =============================
 
     private fun parseDoc(response: Response): Document =
-        Jsoup.parse(response.body?.string() ?: throw IOException("Empty response body"))
+        Jsoup.parse(
+            response.body?.string() ?: throw IOException("Empty response body"),
+            response.request.url.toString(),
+        )
 
     private fun fixScheme(url: String): String =
         if (url.startsWith("//")) "https:$url" else url

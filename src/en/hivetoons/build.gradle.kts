@@ -6,7 +6,7 @@ plugins {
 // --- Extension metadata -----------------------------------------------
 val extName = "HiveToons"
 val extClass = ".HiveToons"
-val extVersionCode = 1
+val extVersionCode = 2
 val isNsfw = false
 // ----------------------------------------------------------------------
 

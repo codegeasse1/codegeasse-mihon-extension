@@ -31,7 +31,8 @@ class Mangamikan : HttpSource() {
 
     override fun headersBuilder() = super.headersBuilder()
         .set("User-Agent", BROWSER_UA)
-        .set("Referer", "$baseUrl/")
+        // No Referer: the site serves every image (cover.php thumbnails AND i.php chapter
+        // pages) with `referrerpolicy="no-referrer"`, so image requests must not carry one.
 
     // =========================== Browse & Search =========================
 
@@ -77,8 +78,9 @@ class Mangamikan : HttpSource() {
         return SManga.create().apply {
             url = response.request.url.toString().substringAfter(baseUrl)
             title = doc.selectFirst("h1")?.text() ?: ""
-            thumbnail_url = doc.selectFirst("img[src*='cover'], .manga-info img, meta[property='og:image']")
-                ?.attr("abs:src") ?: doc.selectFirst("meta[property='og:image']")?.attr("content")
+            thumbnail_url = doc.selectFirst(".cover-wrap img, img[class~=cover]")
+                ?.let { img -> img.attr("abs:data-src").ifBlank { img.attr("abs:src") } }
+                ?.ifBlank { doc.selectFirst("meta[property='og:image']")?.attr("content") }
             description = doc.selectFirst(".manga-description, [itemprop=description]")?.text() ?: ""
             genre = doc.select("a[href*='/genre/'], a[href*='/category/']").joinToString { it.text() }
             status = when {

@@ -6,7 +6,7 @@ plugins {
 // --- Extension metadata -----------------------------------------------
 val extName = "Linkmanga"
 val extClass = ".Linkmanga"
-val extVersionCode = 1
+val extVersionCode = 2
 val isNsfw = false
 // ----------------------------------------------------------------------
 

@@ -39,11 +39,32 @@ abstract class HeanCms : HttpSource() {
 
     override fun headersBuilder() = super.headersBuilder()
         .set("User-Agent", BROWSER_UA)
-        .set("Accept-Language", "en-US,en;q=0.5")
+        .set("Accept-Language", "en-US,en;q=0.9")
+        .set("Origin", baseUrl)
+        .set("Referer", "$baseUrl/")
+        // api.luacomic.org sits behind a Cloudflare WAF that blocks plain OkHttp requests
+        // (the extension showed "HTTP 403") while passing real browsers. Mimic a browser.
+        .set("Sec-Fetch-Mode", "cors")
+        .set("Sec-Fetch-Site", "same-site")
+        .set("Sec-Fetch-Dest", "empty")
+
+    @Volatile
+    private var warmedUp = false
+
+    /** Visit the site once so Cloudflare issues its cookies (e.g. __cf_bm) before the API calls. */
+    private fun ensureWarmedUp() {
+        if (warmedUp) return
+        synchronized(this) {
+            if (warmedUp) return
+            runCatching { client.newCall(GET(baseUrl, headers)).execute().use { } }
+            warmedUp = true
+        }
+    }
 
     // ============================== Popular ==============================
 
     override fun popularMangaRequest(page: Int): Request {
+        ensureWarmedUp()
         val url = queryUrlBuilder(page, "", "All", "desc", "total_views", "[]")
         return GET(url, headers)
     }
@@ -53,6 +74,7 @@ abstract class HeanCms : HttpSource() {
     // ============================== Latest ===============================
 
     override fun latestUpdatesRequest(page: Int): Request {
+        ensureWarmedUp()
         val url = queryUrlBuilder(page, "", "All", latestSortBy, "latest", "[]")
         return GET(url, headers)
     }
@@ -62,6 +84,7 @@ abstract class HeanCms : HttpSource() {
     // ============================== Search ===============================
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
+        ensureWarmedUp()
         val url = queryUrlBuilder(page, query, "All", "desc", "total_views", "[]")
         return GET(url, headers)
     }
@@ -89,6 +112,7 @@ abstract class HeanCms : HttpSource() {
 
     private fun parseSearchMangaList(response: Response): MangasPage {
         val body = response.body?.string() ?: throw IOException("Empty response body")
+        checkNotBlocked(body)
         val result = gson.fromJson(body, QuerySearchDto::class.java)
         val mangas = result.data.map { it.toSManga() }
         return MangasPage(mangas, result.meta?.hasNextPage() ?: false)
@@ -100,12 +124,14 @@ abstract class HeanCms : HttpSource() {
         if (manga.url.startsWith("http")) manga.url else baseUrl + manga.url
 
     override fun mangaDetailsRequest(manga: SManga): Request {
+        ensureWarmedUp()
         val slug = manga.url.substringAfterLast("/").substringBefore("#")
         return GET("$apiUrl/series/$slug", jsonHeaders())
     }
 
     override fun mangaDetailsParse(response: Response): SManga {
         val body = response.body?.string() ?: throw IOException("Empty response body")
+        checkNotBlocked(body)
         return gson.fromJson(body, SeriesDto::class.java).toSManga()
     }
 
@@ -115,6 +141,7 @@ abstract class HeanCms : HttpSource() {
         baseUrl + chapter.url.substringBeforeLast("#")
 
     override fun chapterListRequest(manga: SManga): Request {
+        ensureWarmedUp()
         val seriesId = manga.url.substringAfterLast("#")
         val seriesSlug = manga.url.substringAfterLast("/").substringBefore("#")
         val url = "$apiUrl/chapter/query".toHttpUrl().newBuilder()
@@ -142,6 +169,7 @@ abstract class HeanCms : HttpSource() {
                 ?: client.newCall(GET(baseUrlBuilder.setQueryParameter("page", page.toString()).build(), headers)).execute()
             try {
                 val body = res.body?.string() ?: throw IOException("Empty response body")
+                checkNotBlocked(body)
                 val result = gson.fromJson(body, ChapterPayloadDto::class.java)
                 chapters.addAll(result.data)
                 hasNext = result.meta?.hasNextPage() ?: false
@@ -161,11 +189,14 @@ abstract class HeanCms : HttpSource() {
 
     // =============================== Pages ===============================
 
-    override fun pageListRequest(chapter: SChapter): Request =
-        GET(apiUrl + chapter.url.replace("/series/", "/chapter/").substringBefore("#"), jsonHeaders())
+    override fun pageListRequest(chapter: SChapter): Request {
+        ensureWarmedUp()
+        return GET(apiUrl + chapter.url.replace("/series/", "/chapter/").substringBefore("#"), jsonHeaders())
+    }
 
     override fun pageListParse(response: Response): List<Page> {
         val body = response.body?.string() ?: throw IOException("Empty response body")
+        checkNotBlocked(body)
         val result = gson.fromJson(body, PagePayloadDto::class.java)
 
         if (result.isPaywalled() || result.chapter?.chapterData?.images == null) {
@@ -179,6 +210,7 @@ abstract class HeanCms : HttpSource() {
 
     override fun imageRequest(page: Page): Request {
         val imageHeaders = headers.newBuilder()
+            .removeAll("Origin")
             .add("Accept", ACCEPT_IMAGE)
             .build()
         return Request.Builder().url(page.imageUrl ?: page.url).headers(imageHeaders).build()
@@ -187,6 +219,12 @@ abstract class HeanCms : HttpSource() {
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
 
     // ============================= Utilities =============================
+
+    private fun checkNotBlocked(body: String) {
+        if (CLOUDFLARE_BLOCK_MARKERS.any { body.contains(it) }) {
+            throw IOException("LuaComic's API is behind a Cloudflare firewall (HTTP 403) that blocks this app. Open the site in a browser to verify.")
+        }
+    }
 
     private fun jsonHeaders() = headers.newBuilder().add("Accept", ACCEPT_JSON).build()
 
@@ -202,6 +240,12 @@ abstract class HeanCms : HttpSource() {
         private const val ACCEPT_IMAGE = "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
 
         private const val PER_PAGE_CHAPTERS = 1000
+
+        private val CLOUDFLARE_BLOCK_MARKERS = listOf(
+            "Attention Required",
+            "cf-error-details",
+            "Sorry, you have been blocked",
+        )
 
         private val gson = Gson()
     }

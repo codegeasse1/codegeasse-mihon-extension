@@ -57,14 +57,19 @@ class MangaRead : HttpSource() {
 
     private fun parseList(response: Response): MangasPage {
         val doc = Jsoup.parse(response.body?.string() ?: "", response.request.url.toString())
-        val items = doc.select(".page-item-detail a, .c-tabs-item a, a[href*='/manga/']")
-        val mangas = items.mapNotNull { element ->
-            val url = element.attr("href")
+        // The flat anchor selector grabbed nav/tab links ("Manga", "TOP", "NEW"), the cover
+        // <a> whose text is the "SS"/badge text, AND the real title <a>; distinctBy then kept
+        // the badge/cover entries -> wrong titles + broken thumbs. Scope to cards instead:
+        // browse uses .page-item-detail, search results use .c-tabs-item__content.
+        val mangas = doc.select(".page-item-detail, .c-tabs-item__content").mapNotNull { card ->
+            val link = card.selectFirst(".item-summary .post-title a, .tab-summary .post-title a")
+                ?: return@mapNotNull null
+            val url = link.attr("href")
             if (!url.contains("/manga/") || url.contains("/chapter")) return@mapNotNull null
-            val img = element.selectFirst("img")
+            val img = card.selectFirst(".item-thumb img, .tab-thumb img")
             SManga.create().apply {
                 this.url = url.substringAfter(baseUrl)
-                title = element.text().ifBlank { img?.attr("alt") }?.ifBlank { url.trimEnd('/').substringAfterLast('/') }.orEmpty()
+                title = link.text().ifBlank { img?.attr("alt") }?.ifBlank { url.trimEnd('/').substringAfterLast('/') }.orEmpty()
                 thumbnail_url = img?.httpImageUrl()
             }
         }.distinctBy { it.url }
