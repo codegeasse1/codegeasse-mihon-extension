@@ -73,12 +73,12 @@ class NHentai : HttpSource() {
     private fun catalogToManga(obj: JsonObject): SManga? {
         val id = obj.idOrNull() ?: return null
         val thumb = obj.stringOrNull("thumbnail") ?: return null
-        val title = obj.stringOrNull("english_title")
+        val displayTitle = obj.stringOrNull("english_title")
             ?: obj.stringOrNull("japanese_title")
-        if (title.isNullOrBlank()) return null
+        if (displayTitle.isNullOrBlank()) return null
         return SManga.create().apply {
             url = "/g/$id/"
-            title = title
+            title = displayTitle
             thumbnail_url = thumbUrl(thumb)
         }
     }
