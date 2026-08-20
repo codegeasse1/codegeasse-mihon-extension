@@ -32,6 +32,7 @@ import java.util.TimeZone
  *     Details : /toons?filters[urlSlug][$eq]=<slug>&populate[image]&populate[genres]
  *     Episodes: /episodes?filters[toon][urlSlug][$eq]=<slug>&sort[0]=index:desc&pagination...
  *               -> { data: [ { documentId, index, title, releasedAt } ], meta:{...} }
+ *               (single request; the API caps pageSize at 128 = the 128 newest episodes)
  *     Pages   : /episodes?filters[documentId][$eq]=<episodeDocId>&populate=pages
  *               -> the episode's `pages` array with real CDN image URLs.
  */
@@ -126,44 +127,31 @@ class ToonSpace : HttpSource() {
 
     // ============================== Chapters =============================
 
-    override fun getChapterList(manga: SManga): List<SChapter> {
+    override fun chapterListRequest(manga: SManga): Request {
         val slug = manga.url.substringAfterLast("/")
-        val chapters = mutableListOf<SChapter>()
-        var page = 1
-        while (true) {
-            val url = "$apiUrl/episodes?filters[toon][urlSlug][\$eq]=$slug" +
-                "&sort[0]=index:desc&pagination[page]=$page&pagination[pageSize]=$EPISODES_PER_PAGE"
-            var lastPage = false
-            client.newCall(GET(url, headers)).execute().use { response ->
-                val root = response.parseJson()
-                val pagination = root.objOrNull("meta")?.objOrNull("pagination")
-                val pageCount = pagination?.intOrNull("pageCount") ?: 1
-                root.dataArray().forEach { element ->
-                    val episode = element as? JsonObject ?: return@forEach
-                    val docId = episode.stringOrNull("documentId") ?: return@forEach
-                    val index = episode.intOrNull("index") ?: return@forEach
-                    chapters += SChapter.create().apply {
-                        url = docId
-                        name = episode.stringOrNull("title")?.trim()
-                            ?.takeIf { it.isNotBlank() }
-                            ?: "Episode $index"
-                        chapter_number = index.toFloat()
-                        date_upload = episode.stringOrNull("releasedAt")?.let(::parseDate) ?: 0L
-                    }
-                }
-                lastPage = page >= pageCount
-            }
-            if (lastPage) break
-            page++
-        }
-        return chapters
+        return GET(
+            "$apiUrl/episodes?filters[toon][urlSlug][\$eq]=$slug" +
+                "&sort[0]=index:desc&pagination[page]=1&pagination[pageSize]=$EPISODES_PER_PAGE",
+            headers,
+        )
     }
 
-    override fun chapterListRequest(manga: SManga): Request =
-        throw UnsupportedOperationException("Pagination handled in getChapterList")
-
-    override fun chapterListParse(response: Response): List<SChapter> =
-        throw UnsupportedOperationException("Pagination handled in getChapterList")
+    override fun chapterListParse(response: Response): List<SChapter> {
+        val root = response.parseJson()
+        return root.dataArray().mapNotNull { element ->
+            val episode = element as? JsonObject ?: return@mapNotNull null
+            val docId = episode.stringOrNull("documentId") ?: return@mapNotNull null
+            val index = episode.intOrNull("index") ?: return@mapNotNull null
+            SChapter.create().apply {
+                url = docId
+                name = episode.stringOrNull("title")?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: "Episode $index"
+                chapter_number = index.toFloat()
+                date_upload = episode.stringOrNull("releasedAt")?.let(::parseDate) ?: 0L
+            }
+        }
+    }
 
     // =============================== Pages ===============================
 
@@ -237,7 +225,8 @@ class ToonSpace : HttpSource() {
                 "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
 
         private const val PAGE_SIZE = 30
-        private const val EPISODES_PER_PAGE = 100
+        // Server caps pageSize at 128; series with more episodes show their 128 newest.
+        private const val EPISODES_PER_PAGE = 128
 
         private val GENRES = listOf(
             "Action" to "action",
