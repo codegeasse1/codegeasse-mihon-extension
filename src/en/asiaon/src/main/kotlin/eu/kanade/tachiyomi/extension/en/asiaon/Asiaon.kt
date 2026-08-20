@@ -115,7 +115,7 @@ class Asiaon : HttpSource() {
             url = uri
             thumbnail_url = cover
             status = SManga.ONGOING
-            genre = genre
+            this.genre = genre
             this.description = description?.take(DESCRIPTION_LIMIT)
         }
     }
@@ -173,8 +173,10 @@ class Asiaon : HttpSource() {
     }
 
     private fun parsePostsJson(json: JsonObject): MangasPage {
-        val mangas = json.optArray("nodes").orEmpty().mapNotNull { el ->
-            val node = el.asJsonObject
+        val nodes = json.optArray("nodes") ?: JsonArray()
+        val mangas = nodes.mapNotNull { element ->
+            if (!element.isJsonObject) return@mapNotNull null
+            val node = element.asJsonObject
             val uri = node.optString("uri")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
             SManga.create().apply {
                 url = uri
@@ -217,7 +219,7 @@ class Asiaon : HttpSource() {
     }
 
     private fun executeGraphql(request: Request): JsonObject =
-        client.newCall(request).execute().use(Response::asGraphqlData)
+        client.newCall(request).execute().use { it.asGraphqlData() }
 
     private fun Response.asGraphqlData(): JsonObject {
         val text = body?.string().orEmpty()
