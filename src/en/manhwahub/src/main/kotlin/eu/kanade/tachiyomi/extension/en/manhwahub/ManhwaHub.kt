@@ -18,7 +18,7 @@ import java.net.URLEncoder
 
 /*
  * ManhwaHub (https://manhwahub.net) is a Madara WordPress reader with an
- * 18+ content warning. Everything is plain server-rendered HTML — no API,
+ * 18+ content warning. Everything is plain server-rendered HTML â no API,
  * no Cloudflare challenge, and chapter images live on cdn.manhwahub.net
  * with no referer requirement.
  *
@@ -116,7 +116,7 @@ class ManhwaHub : HttpSource() {
         return SManga.create().apply {
             this.title = title
             url = response.request.url.toString()
-            thumbnail_url = doc.selectFirst(".summary_image img")?.absUrl("src")
+            thumbnail_url = doc.selectFirst(".summary_image img")?.let(::imgUrl)
             this.author = author
             this.artist = author
             this.status = status
@@ -156,7 +156,7 @@ class ManhwaHub : HttpSource() {
     override fun pageListParse(response: Response): List<Page> {
         val doc = response.asJsoup()
         return doc.select(".reading-content img.chapter-img").mapIndexed { index, img ->
-            val url = img.absUrl("src")
+            val url = imgUrl(img)
             Page(index, url, url)
         }
     }
@@ -177,7 +177,7 @@ class ManhwaHub : HttpSource() {
             SManga.create().apply {
                 url = a.absUrl("href")
                 title = a.attr("title").ifBlank { a.text() }.trim()
-                thumbnail_url = card.selectFirst(".item-thumb img")?.absUrl("src")
+                thumbnail_url = card.selectFirst(".item-thumb img")?.let(::imgUrl)
             }
         }
 
@@ -190,7 +190,7 @@ class ManhwaHub : HttpSource() {
                 title = titleLink?.text()?.trim()
                     ?: cover.selectFirst("img")?.attr("alt")?.trim()
                     ?: ""
-                thumbnail_url = cover.selectFirst("img")?.absUrl("src")
+                thumbnail_url = cover.selectFirst("img")?.let(::imgUrl)
             }
         }
 
@@ -201,6 +201,19 @@ class ManhwaHub : HttpSource() {
                 item.selectFirst(".summary-content")?.text()?.trim()
             } else null
         }.firstOrNull() ?: ""
+
+    // Madara lazyloads a chunk of the grid with an empty `src` and the real cover
+    // in `data-src` (or `data-lazy-src`). Try those first so lazy thumbnails don't
+    // come back empty, then fall back to `src`.
+    private fun imgUrl(img: Element): String? {
+        val attr = when {
+            img.attr("data-src").isNotBlank() -> "data-src"
+            img.attr("data-lazy-src").isNotBlank() -> "data-lazy-src"
+            img.attr("src").isNotBlank() -> "src"
+            else -> return null
+        }
+        return img.absUrl(attr).ifBlank { null }
+    }
 
     // ============================== Filters ===============================
 
