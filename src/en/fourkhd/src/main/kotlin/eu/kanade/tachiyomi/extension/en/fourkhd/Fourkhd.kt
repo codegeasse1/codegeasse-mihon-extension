@@ -129,9 +129,8 @@ class Fourkhd : HttpSource() {
 
     override fun pageListParse(response: Response): List<Page> {
         val doc = response.asJsoup()
-        val images = buildList {
-            pageImages(doc)?.let { addAll(it) }
-        }
+        val images = mutableListOf<String>()
+        pageImages(doc)?.let { images.addAll(it) }
         // Long photo sets are split across /2 /3 … sub-pages — fetch them all.
         val extraPages = doc.select(".page-links li.numpages a.page-numbers[href]").mapNotNull { a ->
             pageUrl(a.absUrl("href")).takeIf { it.isNotEmpty() }
