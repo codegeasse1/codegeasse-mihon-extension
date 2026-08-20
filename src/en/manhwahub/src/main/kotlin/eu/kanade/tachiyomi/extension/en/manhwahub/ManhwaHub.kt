@@ -155,8 +155,8 @@ class ManhwaHub : HttpSource() {
 
     override fun pageListParse(response: Response): List<Page> {
         val doc = response.asJsoup()
-        return doc.select(".reading-content img.chapter-img").mapIndexed { index, img ->
-            val url = imgUrl(img)
+        return doc.select(".reading-content img.chapter-img").mapIndexedNotNull { index, img ->
+            val url = imgUrl(img) ?: return@mapIndexedNotNull null
             Page(index, url, url)
         }
     }
