@@ -104,7 +104,7 @@ class Knit : HttpSource() {
             url = response.request.url.toString()
             thumbnail_url = doc.coverUrl()
             status = SManga.ONGOING
-            genre = genre
+            this.genre = genre
         }
     }
 
@@ -130,7 +130,7 @@ class Knit : HttpSource() {
 
     override fun pageListParse(response: Response): List<Page> {
         val first = response.asJsoup()
-        val pages = parseImagePages(first)
+        var pages = parseImagePages(first).toMutableList()
         val id = ARTICLE_ID_REGEX.find(response.request.url.toString())?.groupValues?.get(1)
             ?: return pages
         val totalPages = totalImagePages(first)
