@@ -75,8 +75,10 @@ class Knit : HttpSource() {
             val title = link.attr("title").trim()
                 .takeIf { it.isNotBlank() }
                 ?: img?.attr("alt")?.trim().orEmpty()
-            val dataSrc = img?.attr("data-original-src").orEmpty()
-            val cover = if (dataSrc.isNotBlank()) link.absUrl("data-original-src") else link.absUrl("src")
+            val cover = img?.let { i ->
+                val dataSrc = i.attr("data-original-src")
+                if (dataSrc.isNotBlank()) i.absUrl("data-original-src") else i.absUrl("src")
+            }.orEmpty()
             SManga.create().apply {
                 this.url = url
                 this.title = title
