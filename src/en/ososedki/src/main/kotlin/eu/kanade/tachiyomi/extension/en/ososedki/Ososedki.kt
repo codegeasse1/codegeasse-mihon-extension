@@ -59,7 +59,7 @@ class Ososedki : HttpSource() {
     override fun searchMangaParse(response: Response): MangasPage = parseListing(response)
 
     private fun parseListing(response: Response): MangasPage {
-        val doc = Jsoup.parse(response.body?.string().orEmpty())
+        val doc = Jsoup.parse(response.body?.string().orEmpty(), response.request.url.toString())
         val mangas = doc.select("article.gallery-item a.gallery-link").mapNotNull { link ->
             val url = link.absUrl("href")
             if (url.isBlank()) return@mapNotNull null
@@ -81,7 +81,7 @@ class Ososedki : HttpSource() {
         GET(manga.url, headers)
 
     override fun mangaDetailsParse(response: Response): SManga {
-        val doc = Jsoup.parse(response.body?.string().orEmpty())
+        val doc = Jsoup.parse(response.body?.string().orEmpty(), response.request.url.toString())
         val jsonLd = doc.selectFirst("script[type=\"application/ld+json\"]")?.html()
         val title = jsonLd?.let { Regex("\"name\":\"([^\"]+)\"").find(it)?.groupValues?.get(1) }
             ?.takeIf(String::isNotBlank)
@@ -104,7 +104,7 @@ class Ososedki : HttpSource() {
         GET(manga.url, headers)
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val doc = Jsoup.parse(response.body?.string().orEmpty())
+        val doc = Jsoup.parse(response.body?.string().orEmpty(), response.request.url.toString())
         val url = response.request.url.toString()
         val date = doc.selectFirst("script[type=\"application/ld+json\"]")?.html()
             ?.let { Regex("\"datePublished\":\"([^\"]+)\"").find(it)?.groupValues?.get(1) }
@@ -123,7 +123,7 @@ class Ososedki : HttpSource() {
         GET(chapter.url, headers)
 
     override fun pageListParse(response: Response): List<Page> {
-        val doc = Jsoup.parse(response.body?.string().orEmpty())
+        val doc = Jsoup.parse(response.body?.string().orEmpty(), response.request.url.toString())
         val pages = mutableListOf<Page>()
         doc.select("figure.photo-item a[href]").forEach { a ->
             val src = a.absUrl("href")

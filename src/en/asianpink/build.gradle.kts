@@ -6,7 +6,7 @@ plugins {
 // --- Extension metadata -----------------------------------------------
 val extName = "AsianPink"
 val extClass = ".Asianpink"
-val extVersionCode = 1
+val extVersionCode = 2
 val isNsfw = true
 // ----------------------------------------------------------------------
 

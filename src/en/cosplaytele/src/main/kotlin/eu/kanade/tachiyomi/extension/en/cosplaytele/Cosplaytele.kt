@@ -57,7 +57,7 @@ class Cosplaytele : HttpSource() {
     override fun searchMangaParse(response: Response): MangasPage = parseListing(response)
 
     private fun parseListing(response: Response): MangasPage {
-        val doc = Jsoup.parse(response.body?.string().orEmpty())
+        val doc = Jsoup.parse(response.body?.string().orEmpty(), response.request.url.toString())
         val mangas = doc.select("div.box-text-bottom.box-blog-post").mapNotNull { box ->
             val link = box.selectFirst(".box-image a") ?: return@mapNotNull null
             val url = link.absUrl("href")
@@ -82,7 +82,7 @@ class Cosplaytele : HttpSource() {
         GET(manga.url, headers)
 
     override fun mangaDetailsParse(response: Response): SManga {
-        val doc = Jsoup.parse(response.body?.string().orEmpty())
+        val doc = Jsoup.parse(response.body?.string().orEmpty(), response.request.url.toString())
         val title = doc.selectFirst("h1.entry-title")?.text()?.trim().orEmpty()
         val genre = doc.select("a[rel=\"category tag\"]")
             .mapNotNull { it.text().trim().takeIf(String::isNotEmpty) }
@@ -106,7 +106,7 @@ class Cosplaytele : HttpSource() {
         GET(manga.url, headers)
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val doc = Jsoup.parse(response.body?.string().orEmpty())
+        val doc = Jsoup.parse(response.body?.string().orEmpty(), response.request.url.toString())
         val url = response.request.url.toString()
         val date = doc.selectFirst("time.entry-date[datetime]")?.attr("datetime")?.let(::parseDate) ?: 0L
         return listOf(SChapter.create().apply {
@@ -123,7 +123,7 @@ class Cosplaytele : HttpSource() {
         GET(chapter.url, headers)
 
     override fun pageListParse(response: Response): List<Page> {
-        val doc = Jsoup.parse(response.body?.string().orEmpty())
+        val doc = Jsoup.parse(response.body?.string().orEmpty(), response.request.url.toString())
         val pages = mutableListOf<Page>()
         doc.select(".entry-content .gallery-icon a[href]").forEach { a ->
             val src = a.absUrl("href")

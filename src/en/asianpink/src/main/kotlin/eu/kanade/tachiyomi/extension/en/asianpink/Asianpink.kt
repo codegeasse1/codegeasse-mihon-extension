@@ -60,7 +60,7 @@ class Asianpink : HttpSource() {
     override fun searchMangaParse(response: Response): MangasPage = parseListing(response)
 
     private fun parseListing(response: Response): MangasPage {
-        val doc = Jsoup.parse(response.body?.string().orEmpty())
+        val doc = Jsoup.parse(response.body?.string().orEmpty(), response.request.url.toString())
         val mangas = doc.select("article.latest-post-item").mapNotNull { article ->
             val link = article.selectFirst(".post-thumbnail a") ?: return@mapNotNull null
             val url = link.absUrl("href")
@@ -85,7 +85,7 @@ class Asianpink : HttpSource() {
         GET(manga.url, headers)
 
     override fun mangaDetailsParse(response: Response): SManga {
-        val doc = Jsoup.parse(response.body?.string().orEmpty())
+        val doc = Jsoup.parse(response.body?.string().orEmpty(), response.request.url.toString())
         val jsonLd = doc.selectFirst("script[type=\"application/ld+json\"]")?.html()?.replace("\\/", "/")
         val title = doc.selectFirst("h1.entry-title")?.text()?.trim().orEmpty()
         val cover = jsonLd?.let { Regex("\"thumbnailUrl\":\"([^\"]+)\"").find(it)?.groupValues?.get(1) }
@@ -109,7 +109,7 @@ class Asianpink : HttpSource() {
         GET(manga.url, headers)
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val doc = Jsoup.parse(response.body?.string().orEmpty())
+        val doc = Jsoup.parse(response.body?.string().orEmpty(), response.request.url.toString())
         val url = response.request.url.toString()
         val date = doc.selectFirst("script[type=\"application/ld+json\"]")?.html()
             ?.replace("\\/", "/")
@@ -140,7 +140,7 @@ class Asianpink : HttpSource() {
             fetched++
             val doc = runCatching {
                 client.newCall(GET(pageUrl, headers)).execute().use { res ->
-                    Jsoup.parse(res.body?.string().orEmpty())
+                    Jsoup.parse(res.body?.string().orEmpty(), res.request.url.toString())
                 }
             }.getOrNull() ?: continue
             doc.select(".my-photo-gallery-container .gallery-item img").forEach { img ->
