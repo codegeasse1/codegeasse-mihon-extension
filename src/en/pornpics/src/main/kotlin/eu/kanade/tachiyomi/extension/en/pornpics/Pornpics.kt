@@ -23,7 +23,8 @@ import java.net.URLEncoder
  * gallery detail pages are plain server-rendered HTML.
  *
  *     Latest/Browse : /asian/?offset=N          -> JSON array (20 per batch; offset=1 = first)
- *     Search        : /?q=<term>                -> HTML li.thumbwook cards (single page; 404 = no hits)
+ *     Search        : /?q=<term>                -> HTML cards; terms that map to a
+ *                                                  category/tag path paginate via the offset API
  *     Details       : /galleries/<slug>-<gid>/  -> .gallery-title h1, .gallery-info__item.tags
  *     Pages         : gallery page li.thumbwook a.rel-link[href] -> 1280px CDN images
  *
@@ -35,6 +36,11 @@ class Pornpics : HttpSource() {
     override val baseUrl = "https://www.pornpics.de"
     override val lang = "en"
     override val supportsLatest = true
+
+    // Canonical category/tag path a text search resolved to, e.g. "/asian/" or
+    // "/tags/beautiful-asian/". Null means the term matched a plain search page
+    // (the site offers no pagination for those). Populated by parseSearchHtml.
+    private var searchPath: String? = null
 
     override fun headersBuilder(): Headers.Builder =
         super.headersBuilder()
@@ -59,11 +65,15 @@ class Pornpics : HttpSource() {
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
         val category = filters.filterIsInstance<CategoryFilter>().firstOrNull()?.selected
-        return if (query.isBlank() && category != null) {
-            GET("$baseUrl/$category/?offset=${offset(page)}", headers)
-        } else {
-            val q = URLEncoder.encode(query.trim(), "UTF-8")
-            GET("$baseUrl/?q=$q", headers)
+        return when {
+            query.isBlank() && category != null ->
+                GET("$baseUrl/$category/?offset=${offset(page)}", headers)
+            page > 1 && searchPath != null ->
+                GET("$baseUrl$searchPath?offset=${offset(page)}", headers)
+            else -> {
+                val q = URLEncoder.encode(query.trim(), "UTF-8")
+                GET("$baseUrl/?q=$q", headers)
+            }
         }
     }
 
@@ -112,7 +122,14 @@ class Pornpics : HttpSource() {
                 })
             }
         }
-        return MangasPage(mangas, hasNextPage = false)
+        // pornpics redirects most searches to a category/tag page. Those pages
+        // carry alt-lang links with a PATH (…pornpics.com/asian/) while plain
+        // search pages carry a QUERY (…pornpics.com/?q=term). Reuse the path so
+        // the search can paginate through the offset API.
+        val alt = doc.selectFirst("a.alt-lang-item[href]")?.absUrl("href").orEmpty()
+        val path = alt.substringAfter(".com/", "").substringBefore("?")
+        searchPath = if (Regex("""^[a-z0-9][a-z0-9/-]*/$""").matches(path)) "/$path" else null
+        return MangasPage(mangas, hasNextPage = searchPath != null)
     }
 
     // ========================== Manga Details =============================
