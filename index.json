@@ -1,0 +1,1871 @@
+[
+  {
+    "name": "AllPornComics",
+    "pkg": "eu.kanade.tachiyomi.extension.en.allporncomics",
+    "apk": "tachiyomi-en.allporncomics-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.allporncomics.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 952080588859053971,
+        "lang": "en",
+        "name": "AllPornComics",
+        "baseUrl": "https://allporncomics.co",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "AquaManga",
+    "pkg": "eu.kanade.tachiyomi.extension.en.aquamanga",
+    "apk": "tachiyomi-en.aquamanga-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.aquamanga.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 52692920157427053,
+        "lang": "en",
+        "name": "AquaManga",
+        "baseUrl": "https://aquareader.org",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "AsianPink",
+    "pkg": "eu.kanade.tachiyomi.extension.en.asianpink",
+    "apk": "tachiyomi-en.asianpink-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.asianpink.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 212426847101796570,
+        "lang": "en",
+        "name": "AsianPink",
+        "baseUrl": "https://asianpink.net",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "AsiaOn",
+    "pkg": "eu.kanade.tachiyomi.extension.en.asiaon",
+    "apk": "tachiyomi-en.asiaon-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.asiaon.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 584038353349583842,
+        "lang": "en",
+        "name": "AsiaOn",
+        "baseUrl": "https://asiaon.top",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "AsmHentai",
+    "pkg": "eu.kanade.tachiyomi.extension.en.asmhentai",
+    "apk": "tachiyomi-en.asmhentai-v1.4.3.apk",
+    "lang": "en",
+    "code": 3,
+    "version": "1.4.3",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.asmhentai.png?v=1.4.3",
+    "sources": [
+      {
+        "id": 724496759388574246,
+        "lang": "en",
+        "name": "AsmHentai",
+        "baseUrl": "https://asmhentai.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Asura Scans",
+    "pkg": "eu.kanade.tachiyomi.extension.en.asurascans",
+    "apk": "tachiyomi-en.asurascans-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.asurascans.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 2966843819829677217,
+        "lang": "en",
+        "name": "Asura Scans",
+        "baseUrl": "https://asurascans.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Cocomic",
+    "pkg": "eu.kanade.tachiyomi.extension.en.cocomic",
+    "apk": "tachiyomi-en.cocomic-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.cocomic.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 5042821659731339050,
+        "lang": "en",
+        "name": "Cocomic",
+        "baseUrl": "https://cocomic.co",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Comix",
+    "pkg": "eu.kanade.tachiyomi.extension.en.comix",
+    "apk": "tachiyomi-en.comix-v1.4.6.apk",
+    "lang": "en",
+    "code": 6,
+    "version": "1.4.6",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.comix.png?v=1.4.6",
+    "sources": [
+      {
+        "id": 2815114077667014361,
+        "lang": "en",
+        "name": "Comix",
+        "baseUrl": "https://comix.to",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "CosplayTele",
+    "pkg": "eu.kanade.tachiyomi.extension.en.cosplaytele",
+    "apk": "tachiyomi-en.cosplaytele-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.cosplaytele.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 8280347698020584909,
+        "lang": "en",
+        "name": "CosplayTele",
+        "baseUrl": "https://cosplaytele.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Diva Scans",
+    "pkg": "eu.kanade.tachiyomi.extension.en.divascans",
+    "apk": "tachiyomi-en.divascans-v1.4.3.apk",
+    "lang": "en",
+    "code": 3,
+    "version": "1.4.3",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.divascans.png?v=1.4.3",
+    "sources": [
+      {
+        "id": 7205929090739745424,
+        "lang": "en",
+        "name": "Diva Scans",
+        "baseUrl": "https://divascans.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Doujiva",
+    "pkg": "eu.kanade.tachiyomi.extension.en.doujiva",
+    "apk": "tachiyomi-en.doujiva-v1.4.3.apk",
+    "lang": "en",
+    "code": 3,
+    "version": "1.4.3",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.doujiva.png?v=1.4.3",
+    "sources": [
+      {
+        "id": 6236749650398440111,
+        "lang": "en",
+        "name": "Doujiva",
+        "baseUrl": "https://doujiva.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Example",
+    "pkg": "eu.kanade.tachiyomi.extension.en.example",
+    "apk": "tachiyomi-en.example-v1.4.5.apk",
+    "lang": "en",
+    "code": 5,
+    "version": "1.4.5",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.example.png?v=1.4.5",
+    "sources": [
+      {
+        "id": 2306235059563012928,
+        "lang": "en",
+        "name": "Example",
+        "baseUrl": "https://example.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Fhentai",
+    "pkg": "eu.kanade.tachiyomi.extension.en.fhentai",
+    "apk": "tachiyomi-en.fhentai-v1.4.4.apk",
+    "lang": "en",
+    "code": 4,
+    "version": "1.4.4",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.fhentai.png?v=1.4.4",
+    "sources": [
+      {
+        "id": 8177620181016668739,
+        "lang": "en",
+        "name": "Fhentai",
+        "baseUrl": "https://fhentai.net",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Flame Comics",
+    "pkg": "eu.kanade.tachiyomi.extension.en.flamecomics",
+    "apk": "tachiyomi-en.flamecomics-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.flamecomics.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 1933169983150401299,
+        "lang": "en",
+        "name": "Flame Comics",
+        "baseUrl": "https://flamecomics.xyz",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "4KHD",
+    "pkg": "eu.kanade.tachiyomi.extension.en.fourkhd",
+    "apk": "tachiyomi-en.fourkhd-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.fourkhd.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 2026235208059439866,
+        "lang": "en",
+        "name": "4KHD",
+        "baseUrl": "https://iftye.uuss.uk",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "GalaxyManga",
+    "pkg": "eu.kanade.tachiyomi.extension.en.galaxymanga",
+    "apk": "tachiyomi-en.galaxymanga-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.galaxymanga.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 8980377613400983517,
+        "lang": "en",
+        "name": "GalaxyManga",
+        "baseUrl": "https://galaxymanga.io",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "HentaiForce",
+    "pkg": "eu.kanade.tachiyomi.extension.en.hentaiforce",
+    "apk": "tachiyomi-en.hentaiforce-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.hentaiforce.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 8047589623479468107,
+        "lang": "en",
+        "name": "HentaiForce",
+        "baseUrl": "https://hentaiforce.net",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "HentaiFox",
+    "pkg": "eu.kanade.tachiyomi.extension.en.hentaifox",
+    "apk": "tachiyomi-en.hentaifox-v1.4.3.apk",
+    "lang": "en",
+    "code": 3,
+    "version": "1.4.3",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.hentaifox.png?v=1.4.3",
+    "sources": [
+      {
+        "id": 6039421536708401892,
+        "lang": "en",
+        "name": "HentaiFox",
+        "baseUrl": "https://hentaifox.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "HentaiHere",
+    "pkg": "eu.kanade.tachiyomi.extension.en.hentaihere",
+    "apk": "tachiyomi-en.hentaihere-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.hentaihere.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 6046732437753956710,
+        "lang": "en",
+        "name": "HentaiHere",
+        "baseUrl": "https://hentaihere.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "HentaiNexus",
+    "pkg": "eu.kanade.tachiyomi.extension.en.hentainexus",
+    "apk": "tachiyomi-en.hentainexus-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.hentainexus.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 4404062692607852921,
+        "lang": "en",
+        "name": "HentaiNexus",
+        "baseUrl": "https://hentainexus.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "HentaiVox",
+    "pkg": "eu.kanade.tachiyomi.extension.en.hentaivox",
+    "apk": "tachiyomi-en.hentaivox-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.hentaivox.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 19787350538805320,
+        "lang": "en",
+        "name": "HentaiVox",
+        "baseUrl": "https://hentaivox.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "HentaiZap",
+    "pkg": "eu.kanade.tachiyomi.extension.en.hentaizap",
+    "apk": "tachiyomi-en.hentaizap-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.hentaizap.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 1166660937595799534,
+        "lang": "en",
+        "name": "HentaiZap",
+        "baseUrl": "https://hentaizap.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Hentara",
+    "pkg": "eu.kanade.tachiyomi.extension.en.hentara",
+    "apk": "tachiyomi-en.hentara-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.hentara.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 3335443950476891089,
+        "lang": "en",
+        "name": "Hentara",
+        "baseUrl": "https://hentara.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Hh3d",
+    "pkg": "eu.kanade.tachiyomi.extension.en.hh3d",
+    "apk": "tachiyomi-en.hh3d-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.hh3d.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 1742233287666408823,
+        "lang": "en",
+        "name": "Hh3d",
+        "baseUrl": "https://hh3d.wtf",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "HiveToons",
+    "pkg": "eu.kanade.tachiyomi.extension.en.hivetoons",
+    "apk": "tachiyomi-en.hivetoons-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.hivetoons.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 4648225874714691883,
+        "lang": "en",
+        "name": "HiveToons",
+        "baseUrl": "https://hivetoons.org",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "IMHentai",
+    "pkg": "eu.kanade.tachiyomi.extension.en.imhentai",
+    "apk": "tachiyomi-en.imhentai-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.imhentai.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 4869098761163770310,
+        "lang": "en",
+        "name": "IMHentai",
+        "baseUrl": "https://imhentai.xxx",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Kagane",
+    "pkg": "eu.kanade.tachiyomi.extension.en.kagane",
+    "apk": "tachiyomi-en.kagane-v1.4.3.apk",
+    "lang": "en",
+    "code": 3,
+    "version": "1.4.3",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.kagane.png?v=1.4.3",
+    "sources": [
+      {
+        "id": 8606821583846986455,
+        "lang": "en",
+        "name": "Kagane",
+        "baseUrl": "https://kagane.to",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Kingofshojo",
+    "pkg": "eu.kanade.tachiyomi.extension.en.kingofshojo",
+    "apk": "tachiyomi-en.kingofshojo-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.kingofshojo.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 5077372789383465643,
+        "lang": "en",
+        "name": "Kingofshojo",
+        "baseUrl": "https://kingofshojo.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Knit",
+    "pkg": "eu.kanade.tachiyomi.extension.en.knit",
+    "apk": "tachiyomi-en.knit-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.knit.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 7146251962580562803,
+        "lang": "en",
+        "name": "Knit",
+        "baseUrl": "https://xx.knit.bid",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "KuraManga",
+    "pkg": "eu.kanade.tachiyomi.extension.en.kuramanga",
+    "apk": "tachiyomi-en.kuramanga-v1.4.4.apk",
+    "lang": "en",
+    "code": 4,
+    "version": "1.4.4",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.kuramanga.png?v=1.4.4",
+    "sources": [
+      {
+        "id": 1068317193172902942,
+        "lang": "en",
+        "name": "KuraManga",
+        "baseUrl": "https://kuramanga.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Linkmanga",
+    "pkg": "eu.kanade.tachiyomi.extension.en.linkmanga",
+    "apk": "tachiyomi-en.linkmanga-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.linkmanga.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 2835203440656371253,
+        "lang": "en",
+        "name": "Linkmanga",
+        "baseUrl": "https://linkmanga.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "LuaComic",
+    "pkg": "eu.kanade.tachiyomi.extension.en.luacomic",
+    "apk": "tachiyomi-en.luacomic-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.luacomic.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 6962642594432728102,
+        "lang": "en",
+        "name": "LuaComic",
+        "baseUrl": "https://luacomic.org",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "LunarX",
+    "pkg": "eu.kanade.tachiyomi.extension.en.lunarx",
+    "apk": "tachiyomi-en.lunarx-v1.4.8.apk",
+    "lang": "en",
+    "code": 8,
+    "version": "1.4.8",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.lunarx.png?v=1.4.8",
+    "sources": [
+      {
+        "id": 1462584336322702086,
+        "lang": "en",
+        "name": "LunarX",
+        "baseUrl": "https://lunarx.to",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Manga18fx",
+    "pkg": "eu.kanade.tachiyomi.extension.en.manga18fx",
+    "apk": "tachiyomi-en.manga18fx-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.manga18fx.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 2216666581015010919,
+        "lang": "en",
+        "name": "Manga18fx",
+        "baseUrl": "https://manga18fx.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "MangaBall",
+    "pkg": "eu.kanade.tachiyomi.extension.en.mangaball",
+    "apk": "tachiyomi-en.mangaball-v1.4.4.apk",
+    "lang": "en",
+    "code": 4,
+    "version": "1.4.4",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.mangaball.png?v=1.4.4",
+    "sources": [
+      {
+        "id": 272276240925821546,
+        "lang": "en",
+        "name": "MangaBall",
+        "baseUrl": "https://mangaball.net",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Mangack",
+    "pkg": "eu.kanade.tachiyomi.extension.en.mangack",
+    "apk": "tachiyomi-en.mangack-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.mangack.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 247230876750761989,
+        "lang": "en",
+        "name": "Mangack",
+        "baseUrl": "https://mangack.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Manga District",
+    "pkg": "eu.kanade.tachiyomi.extension.en.mangadistrict",
+    "apk": "tachiyomi-en.mangadistrict-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.mangadistrict.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 3905986751428055246,
+        "lang": "en",
+        "name": "Manga District",
+        "baseUrl": "https://mangadistrict.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "MangaFreak",
+    "pkg": "eu.kanade.tachiyomi.extension.en.mangafreak",
+    "apk": "tachiyomi-en.mangafreak-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.mangafreak.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 2058336942673109031,
+        "lang": "en",
+        "name": "MangaFreak",
+        "baseUrl": "https://mangafreak.me",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "MangaGG",
+    "pkg": "eu.kanade.tachiyomi.extension.en.mangagg",
+    "apk": "tachiyomi-en.mangagg-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.mangagg.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 6729831513347729981,
+        "lang": "en",
+        "name": "MangaGG",
+        "baseUrl": "https://mangagg.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "MangaHub",
+    "pkg": "eu.kanade.tachiyomi.extension.en.mangahub",
+    "apk": "tachiyomi-en.mangahub-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.mangahub.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 2043611230884704807,
+        "lang": "en",
+        "name": "MangaHub",
+        "baseUrl": "https://mangahub.io",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "MangaK",
+    "pkg": "eu.kanade.tachiyomi.extension.en.mangak",
+    "apk": "tachiyomi-en.mangak-v1.4.4.apk",
+    "lang": "en",
+    "code": 4,
+    "version": "1.4.4",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.mangak.png?v=1.4.4",
+    "sources": [
+      {
+        "id": 7532693993751596166,
+        "lang": "en",
+        "name": "MangaK",
+        "baseUrl": "https://mangak.io",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "MangaKatana",
+    "pkg": "eu.kanade.tachiyomi.extension.en.mangakatana",
+    "apk": "tachiyomi-en.mangakatana-v1.4.3.apk",
+    "lang": "en",
+    "code": 3,
+    "version": "1.4.3",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.mangakatana.png?v=1.4.3",
+    "sources": [
+      {
+        "id": 3277064577647414002,
+        "lang": "en",
+        "name": "MangaKatana",
+        "baseUrl": "https://mangakatana.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Mangakawaii",
+    "pkg": "eu.kanade.tachiyomi.extension.en.mangakawaii",
+    "apk": "tachiyomi-en.mangakawaii-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.mangakawaii.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 4373468801096419871,
+        "lang": "en",
+        "name": "Mangakawaii",
+        "baseUrl": "https://www.mangakawaii.io",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "MangaManiacs",
+    "pkg": "eu.kanade.tachiyomi.extension.en.mangamaniacs",
+    "apk": "tachiyomi-en.mangamaniacs-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.mangamaniacs.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 8518843855305121097,
+        "lang": "en",
+        "name": "MangaManiacs",
+        "baseUrl": "https://mangamaniacs.org",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "MangaMikan",
+    "pkg": "eu.kanade.tachiyomi.extension.en.mangamikan",
+    "apk": "tachiyomi-en.mangamikan-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.mangamikan.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 9192132210192330071,
+        "lang": "en",
+        "name": "MangaMikan",
+        "baseUrl": "https://mangamikan.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Manganato",
+    "pkg": "eu.kanade.tachiyomi.extension.en.manganato",
+    "apk": "tachiyomi-en.manganato-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.manganato.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 1695035404447995539,
+        "lang": "en",
+        "name": "Manganato",
+        "baseUrl": "https://www.manganato.gg",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Mangapill",
+    "pkg": "eu.kanade.tachiyomi.extension.en.mangapill",
+    "apk": "tachiyomi-en.mangapill-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.mangapill.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 8304193974556537203,
+        "lang": "en",
+        "name": "Mangapill",
+        "baseUrl": "https://mangapill.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "MangaRead",
+    "pkg": "eu.kanade.tachiyomi.extension.en.mangaread",
+    "apk": "tachiyomi-en.mangaread-v1.4.3.apk",
+    "lang": "en",
+    "code": 3,
+    "version": "1.4.3",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.mangaread.png?v=1.4.3",
+    "sources": [
+      {
+        "id": 7193364561517929608,
+        "lang": "en",
+        "name": "MangaRead",
+        "baseUrl": "https://www.mangaread.org",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Mangasushi",
+    "pkg": "eu.kanade.tachiyomi.extension.en.mangasushi",
+    "apk": "tachiyomi-en.mangasushi-v1.4.3.apk",
+    "lang": "en",
+    "code": 3,
+    "version": "1.4.3",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.mangasushi.png?v=1.4.3",
+    "sources": [
+      {
+        "id": 3210996300063335325,
+        "lang": "en",
+        "name": "Mangasushi",
+        "baseUrl": "https://mangasushi.org",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "MangaTaro",
+    "pkg": "eu.kanade.tachiyomi.extension.en.mangataro",
+    "apk": "tachiyomi-en.mangataro-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.mangataro.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 8077501680994691611,
+        "lang": "en",
+        "name": "MangaTaro",
+        "baseUrl": "https://mangataro.org",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Mangazin",
+    "pkg": "eu.kanade.tachiyomi.extension.en.mangazin",
+    "apk": "tachiyomi-en.mangazin-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.mangazin.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 849360211946063432,
+        "lang": "en",
+        "name": "Mangazin",
+        "baseUrl": "https://mangazin.org",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "ManhuaPlus",
+    "pkg": "eu.kanade.tachiyomi.extension.en.manhuaplus",
+    "apk": "tachiyomi-en.manhuaplus-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.manhuaplus.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 8886691909981975505,
+        "lang": "en",
+        "name": "ManhuaPlus",
+        "baseUrl": "https://manhuaplus.top",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Manhuarm",
+    "pkg": "eu.kanade.tachiyomi.extension.en.manhuarm",
+    "apk": "tachiyomi-en.manhuarm-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.manhuarm.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 6444532730791321213,
+        "lang": "en",
+        "name": "Manhuarm",
+        "baseUrl": "https://manhuarmtl.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "ManhuaTop",
+    "pkg": "eu.kanade.tachiyomi.extension.en.manhuatop",
+    "apk": "tachiyomi-en.manhuatop-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.manhuatop.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 3808047758004644847,
+        "lang": "en",
+        "name": "ManhuaTop",
+        "baseUrl": "https://manhuatop.org",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Manhwa18",
+    "pkg": "eu.kanade.tachiyomi.extension.en.manhwa18",
+    "apk": "tachiyomi-en.manhwa18-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.manhwa18.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 572057920825900197,
+        "lang": "en",
+        "name": "Manhwa18",
+        "baseUrl": "https://manhwa18.net",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Manhwa18CC",
+    "pkg": "eu.kanade.tachiyomi.extension.en.manhwa18cc",
+    "apk": "tachiyomi-en.manhwa18cc-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.manhwa18cc.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 6183764656102265100,
+        "lang": "en",
+        "name": "Manhwa18CC",
+        "baseUrl": "https://manhwa18.cc",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "ManhwaHub",
+    "pkg": "eu.kanade.tachiyomi.extension.en.manhwahub",
+    "apk": "tachiyomi-en.manhwahub-v1.4.3.apk",
+    "lang": "en",
+    "code": 3,
+    "version": "1.4.3",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.manhwahub.png?v=1.4.3",
+    "sources": [
+      {
+        "id": 4917350793800695946,
+        "lang": "en",
+        "name": "ManhwaHub",
+        "baseUrl": "https://manhwahub.net",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "ManhwaRead",
+    "pkg": "eu.kanade.tachiyomi.extension.en.manhwaread",
+    "apk": "tachiyomi-en.manhwaread-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.manhwaread.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 3375336197348033056,
+        "lang": "en",
+        "name": "ManhwaRead",
+        "baseUrl": "https://manhwaread.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "ManhwaToon",
+    "pkg": "eu.kanade.tachiyomi.extension.en.manhwatoon",
+    "apk": "tachiyomi-en.manhwatoon-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.manhwatoon.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 7242529183258913005,
+        "lang": "en",
+        "name": "ManhwaToon",
+        "baseUrl": "https://www.manhwatoon.me",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Manhwatop",
+    "pkg": "eu.kanade.tachiyomi.extension.en.manhwatop",
+    "apk": "tachiyomi-en.manhwatop-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.manhwatop.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 8794286539741680428,
+        "lang": "en",
+        "name": "Manhwatop",
+        "baseUrl": "https://manhwatop.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "ManhwaZ",
+    "pkg": "eu.kanade.tachiyomi.extension.en.manhwaz",
+    "apk": "tachiyomi-en.manhwaz-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.manhwaz.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 3653310018683341841,
+        "lang": "en",
+        "name": "ManhwaZ",
+        "baseUrl": "https://manhwaz.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Mgeko",
+    "pkg": "eu.kanade.tachiyomi.extension.en.mgeko",
+    "apk": "tachiyomi-en.mgeko-v1.4.3.apk",
+    "lang": "en",
+    "code": 3,
+    "version": "1.4.3",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.mgeko.png?v=1.4.3",
+    "sources": [
+      {
+        "id": 362161133858165678,
+        "lang": "en",
+        "name": "Mgeko",
+        "baseUrl": "https://www.mgeko.cc",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "nhentai",
+    "pkg": "eu.kanade.tachiyomi.extension.en.nhentai",
+    "apk": "tachiyomi-en.nhentai-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.nhentai.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 1806484887678105678,
+        "lang": "en",
+        "name": "nhentai",
+        "baseUrl": "https://nhentai.net",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "NovelCrow",
+    "pkg": "eu.kanade.tachiyomi.extension.en.novelcrow",
+    "apk": "tachiyomi-en.novelcrow-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.novelcrow.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 6243495108403563228,
+        "lang": "en",
+        "name": "NovelCrow",
+        "baseUrl": "https://novelcrow.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "oManga",
+    "pkg": "eu.kanade.tachiyomi.extension.en.omanga",
+    "apk": "tachiyomi-en.omanga-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.omanga.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 5916514698878632118,
+        "lang": "en",
+        "name": "oManga",
+        "baseUrl": "https://omanga.to",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "OSOSEDKI",
+    "pkg": "eu.kanade.tachiyomi.extension.en.ososedki",
+    "apk": "tachiyomi-en.ososedki-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.ososedki.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 7721916409930850097,
+        "lang": "en",
+        "name": "OSOSEDKI",
+        "baseUrl": "https://ososedki.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Pornhwa",
+    "pkg": "eu.kanade.tachiyomi.extension.en.pornhwa",
+    "apk": "tachiyomi-en.pornhwa-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.pornhwa.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 7688272891396189642,
+        "lang": "en",
+        "name": "Pornhwa",
+        "baseUrl": "https://pornhwa.pro",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "PornPics",
+    "pkg": "eu.kanade.tachiyomi.extension.en.pornpics",
+    "apk": "tachiyomi-en.pornpics-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.pornpics.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 6732831168412170756,
+        "lang": "en",
+        "name": "PornPics",
+        "baseUrl": "https://www.pornpics.de",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Project Suki",
+    "pkg": "eu.kanade.tachiyomi.extension.en.projectsuki",
+    "apk": "tachiyomi-en.projectsuki-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.projectsuki.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 6268481412474072711,
+        "lang": "en",
+        "name": "Project Suki",
+        "baseUrl": "https://projectsuki.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Pururin",
+    "pkg": "eu.kanade.tachiyomi.extension.en.pururin",
+    "apk": "tachiyomi-en.pururin-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.pururin.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 8945718995907985692,
+        "lang": "en",
+        "name": "Pururin",
+        "baseUrl": "https://pururin.me",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Raw1001",
+    "pkg": "eu.kanade.tachiyomi.extension.en.raw1001",
+    "apk": "tachiyomi-en.raw1001-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.raw1001.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 1080124112322369822,
+        "lang": "en",
+        "name": "Raw1001",
+        "baseUrl": "https://raw1001.net",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Rawkuma",
+    "pkg": "eu.kanade.tachiyomi.extension.en.rawkuma",
+    "apk": "tachiyomi-en.rawkuma-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.rawkuma.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 7838149007639235438,
+        "lang": "en",
+        "name": "Rawkuma",
+        "baseUrl": "https://rawkuma.net",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Rokari",
+    "pkg": "eu.kanade.tachiyomi.extension.en.rokari",
+    "apk": "tachiyomi-en.rokari-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.rokari.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 801195737628788929,
+        "lang": "en",
+        "name": "Rokari",
+        "baseUrl": "https://rokaricomics.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "TempleScan",
+    "pkg": "eu.kanade.tachiyomi.extension.en.templescan",
+    "apk": "tachiyomi-en.templescan-v1.4.4.apk",
+    "lang": "en",
+    "code": 4,
+    "version": "1.4.4",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.templescan.png?v=1.4.4",
+    "sources": [
+      {
+        "id": 1502399038414147922,
+        "lang": "en",
+        "name": "TempleScan",
+        "baseUrl": "https://templescan.net",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "The Blank",
+    "pkg": "eu.kanade.tachiyomi.extension.en.theblank",
+    "apk": "tachiyomi-en.theblank-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.theblank.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 850517855187341833,
+        "lang": "en",
+        "name": "The Blank",
+        "baseUrl": "https://theblank.net",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "3Hentai",
+    "pkg": "eu.kanade.tachiyomi.extension.en.threehentai",
+    "apk": "tachiyomi-en.threehentai-v1.4.5.apk",
+    "lang": "en",
+    "code": 5,
+    "version": "1.4.5",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.threehentai.png?v=1.4.5",
+    "sources": [
+      {
+        "id": 3008286182750290180,
+        "lang": "en",
+        "name": "3Hentai",
+        "baseUrl": "https://3hentai.net",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Toonily",
+    "pkg": "eu.kanade.tachiyomi.extension.en.toonily",
+    "apk": "tachiyomi-en.toonily-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.toonily.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 1800686427056377070,
+        "lang": "en",
+        "name": "Toonily",
+        "baseUrl": "https://toonily.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "ToonSpace",
+    "pkg": "eu.kanade.tachiyomi.extension.en.toonspace",
+    "apk": "tachiyomi-en.toonspace-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.toonspace.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 8147559440156633606,
+        "lang": "en",
+        "name": "ToonSpace",
+        "baseUrl": "https://toon.space",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "ToonTop",
+    "pkg": "eu.kanade.tachiyomi.extension.en.toontop",
+    "apk": "tachiyomi-en.toontop-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.toontop.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 4411854083246523109,
+        "lang": "en",
+        "name": "ToonTop",
+        "baseUrl": "https://toontop.io",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "WebtoonXYZ",
+    "pkg": "eu.kanade.tachiyomi.extension.en.webtoonxyz",
+    "apk": "tachiyomi-en.webtoonxyz-v1.4.1.apk",
+    "lang": "en",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.webtoonxyz.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 7820634823131077008,
+        "lang": "en",
+        "name": "WebtoonXYZ",
+        "baseUrl": "https://www.webtoon.xyz",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "WeebCentral",
+    "pkg": "eu.kanade.tachiyomi.extension.en.weebcentral",
+    "apk": "tachiyomi-en.weebcentral-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.weebcentral.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 2886550946742370666,
+        "lang": "en",
+        "name": "WeebCentral",
+        "baseUrl": "https://weebcentral.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Yaoi Manga Online",
+    "pkg": "eu.kanade.tachiyomi.extension.en.yaoimangaonline",
+    "apk": "tachiyomi-en.yaoimangaonline-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.yaoimangaonline.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 6658571532525183290,
+        "lang": "en",
+        "name": "Yaoi Manga Online",
+        "baseUrl": "https://yaoimangaonline.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Yaoiscan",
+    "pkg": "eu.kanade.tachiyomi.extension.en.yaoiscan",
+    "apk": "tachiyomi-en.yaoiscan-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.yaoiscan.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 7494770121316008188,
+        "lang": "en",
+        "name": "Yaoiscan",
+        "baseUrl": "https://yaoiscan.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Yurivan",
+    "pkg": "eu.kanade.tachiyomi.extension.en.yurivan",
+    "apk": "tachiyomi-en.yurivan-v1.4.6.apk",
+    "lang": "en",
+    "code": 6,
+    "version": "1.4.6",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.yurivan.png?v=1.4.6",
+    "sources": [
+      {
+        "id": 2090621428085411273,
+        "lang": "en",
+        "name": "Yurivan",
+        "baseUrl": "https://www.yurivan.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Zinmanga",
+    "pkg": "eu.kanade.tachiyomi.extension.en.zinmanga",
+    "apk": "tachiyomi-en.zinmanga-v1.4.2.apk",
+    "lang": "en",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.en.zinmanga.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 3632028727650523766,
+        "lang": "en",
+        "name": "Zinmanga",
+        "baseUrl": "https://www.zinmanga.net",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "BlackToon",
+    "pkg": "eu.kanade.tachiyomi.extension.ko.blacktoon",
+    "apk": "tachiyomi-ko.blacktoon-v1.4.1.apk",
+    "lang": "ko",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.ko.blacktoon.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 5436466677628957620,
+        "lang": "ko",
+        "name": "BlackToon",
+        "baseUrl": "https://blacktoon.cc",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Joatoon",
+    "pkg": "eu.kanade.tachiyomi.extension.ko.joatoon",
+    "apk": "tachiyomi-ko.joatoon-v1.4.2.apk",
+    "lang": "ko",
+    "code": 2,
+    "version": "1.4.2",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.ko.joatoon.png?v=1.4.2",
+    "sources": [
+      {
+        "id": 7753812851852278379,
+        "lang": "ko",
+        "name": "Joatoon",
+        "baseUrl": "https://joa-new.com",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "NewToki",
+    "pkg": "eu.kanade.tachiyomi.extension.ko.newtoki",
+    "apk": "tachiyomi-ko.newtoki-v1.4.1.apk",
+    "lang": "ko",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.ko.newtoki.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 3177221050350791561,
+        "lang": "ko",
+        "name": "NewToki",
+        "baseUrl": "https://newtoki1.org",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Toonkor",
+    "pkg": "eu.kanade.tachiyomi.extension.ko.toonkor",
+    "apk": "tachiyomi-ko.toonkor-v1.4.1.apk",
+    "lang": "ko",
+    "code": 1,
+    "version": "1.4.1",
+    "nsfw": 2,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "icon": "https://raw.githubusercontent.com/codegeasse1/codegeasse-mihon-extension/repo/icon/eu.kanade.tachiyomi.extension.ko.toonkor.png?v=1.4.1",
+    "sources": [
+      {
+        "id": 164213248779938841,
+        "lang": "ko",
+        "name": "Toonkor",
+        "baseUrl": "https://tkor145.com",
+        "versionId": 1
+      }
+    ]
+  }
+]
