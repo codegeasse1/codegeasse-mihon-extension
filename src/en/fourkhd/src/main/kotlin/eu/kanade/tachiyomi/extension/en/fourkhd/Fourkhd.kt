@@ -16,10 +16,9 @@ import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
 /*
- * 4KHD (https://www.4khd.com — this extension talks to the mirror
- * https://iftye.uuss.uk) — a WordPress photo-set site. All internal links are
- * absolute and point at the canonical 4khd.com domain, so they are rewritten
- * back to the mirror base.
+ * 4KHD (https://www.4khd.com) — a WordPress photo-set site. All internal links
+ * are absolute and point at the canonical 4khd.com domain, so they are
+ * normalized to the www.4khd.com base.
  *
  *     Latest/Browse : /?query-3-page=N        -> li.wp-block-post grid (block query pagination,
  *                                                thousands of pages — unlimited until the end)
@@ -30,7 +29,7 @@ import java.net.URLEncoder
 class Fourkhd : HttpSource() {
 
     override val name = "4KHD"
-    override val baseUrl = "https://iftye.uuss.uk"
+    override val baseUrl = "https://www.4khd.com"
     override val lang = "en"
     override val supportsLatest = true
 
@@ -159,7 +158,7 @@ class Fourkhd : HttpSource() {
 
     // ============================= Utilities ==============================
 
-    // All in-page links are canonical 4khd.com URLs — point them at the mirror.
+    // All in-page links are canonical 4khd.com URLs — normalize them to the www base.
     private fun pageUrl(raw: String): String = when {
         raw.startsWith(CANONICAL_ROOT) -> baseUrl + raw.removePrefix(CANONICAL_ROOT)
         raw.startsWith(CANONICAL_ROOT_ALT) -> baseUrl + raw.removePrefix(CANONICAL_ROOT_ALT)
