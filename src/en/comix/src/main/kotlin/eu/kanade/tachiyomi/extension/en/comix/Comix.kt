@@ -57,6 +57,7 @@ import okio.Buffer
 import org.json.JSONObject
 import org.jsoup.nodes.Document
 import rx.Observable
+import java.io.IOException
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.util.Calendar
@@ -90,28 +91,91 @@ class Comix : HttpSource(), ConfigurableSource {
 
     override val client = network.client.newBuilder()
         .addInterceptor(Descrambler.interceptor)
+        .addInterceptor(::altHostFallback)
         .addInterceptor { chain ->
             val request = chain.request()
-            val response = chain.proceed(request)
-            
-            if (response.code != 404) return@addInterceptor response
+            if (request.url.fragment?.startsWith(ALT_HOSTS_FRAGMENT) == true || request.url.host == baseUrlHost) {
+                return@addInterceptor chain.proceed(request)
+            }
+
+            var response = proceedWithRetry(chain, request)
+            if (response.isSuccessful) return@addInterceptor response
 
             val url = request.url.toString()
-            val fallbacks = listOf("/i5/", "/si/", "/i/", "/sii/", "/ii/")
+            val fallbacks = listOf("/hi/", "/fcf/", "/i5/", "/si/", "/i/", "/sii/", "/ii/")
                 .map { url.replaceFirst(SCRAMBLE_PATH_FALLBACK_REGEX, it) }
                 .filter { it != url }
 
             if (fallbacks.isEmpty()) return@addInterceptor response
 
-            var lastResponse = response
             for (fallbackUrl in fallbacks) {
-                lastResponse.close()
-                lastResponse = chain.proceed(request.newBuilder().url(fallbackUrl).build())
-                if (lastResponse.code != 404) break
+                response.close()
+                response = proceedWithRetry(chain, request.newBuilder().url(fallbackUrl).build())
+                if (response.isSuccessful) break
             }
-            lastResponse
+            response
         }
         .build()
+
+    private val baseUrlHost get() = baseUrl.toHttpUrl().host
+
+    // Retry failed images on alt hosts, like the site's reader
+    private fun altHostFallback(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        val altHosts = request.url.altHosts()
+        if (altHosts.isEmpty()) return chain.proceed(request)
+
+        val urls = listOf(request.url) + altHosts.mapIndexed { i, host ->
+            request.url.newBuilder()
+                .host(host)
+                .setQueryParameter("r", (i + 1).toString())
+                .build()
+        }
+        var failed: Response? = null
+        var error: IOException? = null
+        for (url in urls) {
+            if (failed != null) {
+                failed.close()
+                failed = null
+                runCatching { Thread.sleep(2000) }
+            }
+            try {
+                val response = chain.proceed(request.newBuilder().url(url).build())
+                if (response.isSuccessful) return response
+                failed = response
+            } catch (e: IOException) {
+                if (chain.call().isCanceled()) throw e
+                error = e
+            }
+        }
+        return failed ?: throw error!!
+    }
+
+    private fun HttpUrl.altHosts(): List<String> = fragment
+        ?.takeIf { it.startsWith(ALT_HOSTS_FRAGMENT) }
+        ?.removePrefix(ALT_HOSTS_FRAGMENT)
+        ?.split(',')
+        .orEmpty()
+
+    private fun proceedWithRetry(chain: Interceptor.Chain, request: Request): Response {
+        var response = chain.proceed(request)
+        if (response.isSuccessful) return response
+
+        for (attempt in 1..10) {
+            if (response.code !in SERVER_ERROR_CODES && response.code != 404) break
+
+            response.close()
+            runCatching { Thread.sleep(1500) }
+
+            val retryUrl = request.url.newBuilder()
+                .setQueryParameter("r", attempt.toString())
+                .build()
+            response = chain.proceed(request.newBuilder().url(retryUrl).build())
+            if (response.isSuccessful) break
+        }
+
+        return response
+    }
 
     override fun headersBuilder() = super.headersBuilder()
         .add("Referer", "$baseUrl/")
@@ -120,24 +184,16 @@ class Comix : HttpSource(), ConfigurableSource {
 
     override fun imageUrlParse(response: Response) = throw UnsupportedOperationException()
 
+    // Comix image domains block any image requests with Referer/Origin, so both
+    // headers are stripped for every page image (fragment is kept: it carries
+    // the alt-host list, which never leaves the device anyway).
     override fun imageRequest(page: Page): Request {
         val imageUrl = page.imageUrl ?: return super.imageRequest(page)
-        val urlWithoutFragment = imageUrl.substringBefore('#')
-        val imageHost = urlWithoutFragment.toHttpUrlOrNull()?.host.orEmpty()
-        val isScrambled = imageUrl.contains("#scrambled")
-        val isV3 = urlWithoutFragment.toHttpUrlOrNull()?.queryParameterNames?.contains("v3") == true
-        val isLegacyScramble = isScrambled && !isV3
-        val baseUrlHost = baseUrl.toHttpUrl().host
-        val requestHeaders = if (
-            imageHost.isNotEmpty() &&
-            !imageHost.endsWith(baseUrlHost) &&
-            !isLegacyScramble
-        ) {
-            headersBuilder().removeAll("Origin").build()
-        } else {
-            headers
-        }
-        return GET(urlWithoutFragment, requestHeaders)
+        val requestHeaders = headersBuilder()
+            .removeAll("Origin")
+            .removeAll("Referer")
+            .build()
+        return GET(imageUrl, requestHeaders)
     }
 
     // ============================== Popular ==============================
@@ -461,71 +517,103 @@ class Comix : HttpSource(), ConfigurableSource {
         }
 
         val allChapters = fastPathChapters ?: run {
+            // The title page loads chapters through the site's own paginated
+            // /api/v1/manga/{hid}/chapters API (token-signed in page JS, so plain
+            // HTTP cannot call it). Hook the decoded API responses exactly like
+            // the official extension: capture every holder the site decodes that
+            // carries chapter items, and drive the site's own ?page= state until
+            // the last page instead of clicking DOM buttons.
+            val chapterPath = JSONObject.quote("/title/" + mangaSlug.substringBefore('-') + "-")
             val payload = runInWebView(
                 document = document,
                 buildScript = { interfaceName ->
                     """
-                        (function () {
-                            const payloadKey = '__comixChapterPayload';
-                            if (window[payloadKey]?.installed) return null;
-                            const state = window[payloadKey] = { installed: true, submitted: false, seen: new Set(), nextClicks: new Set(), items: [] };
-                            const submit = () => {
-                                if (state.submitted) return;
-                                state.submitted = true;
-                                window.$interfaceName.passPayload(JSON.stringify(state.items));
+                    (function () {
+                        if (window.__comixChaptersInstalled) return null;
+                        window.__comixChaptersInstalled = true;
+                        var pass = function (text) { window.$interfaceName.passPayload(text); };
+                        var fail = function (text) { window.$interfaceName.failPayload(String(text)); };
+                        var drive = (function (latestChapterId, chapterPath, maxPages, pageDelayMs, passFn, failFn) {
+                            var chapters = [];
+                            var isChapter = function (item) {
+                                return item &&
+                                    typeof item.id === "number" &&
+                                    typeof item.number === "number" &&
+                                    typeof item.url === "string" &&
+                                    item.url.indexOf(chapterPath) !== -1;
                             };
-                            const findNextButton = page => {
-                                const buttons = [...document.querySelectorAll('.mchap-foot button')].filter(button => !button.disabled);
-                                return buttons.find(button => {
-                                    const label = [button.getAttribute('aria-label'), button.getAttribute('title'), button.textContent].filter(Boolean).join(' ');
-                                    return /\bnext\b/i.test(label);
-                                }) || buttons.find(button => Number(button.textContent?.trim()) === page + 1);
+                            var page = 1;
+                            var done = false;
+                            return function (holder) {
+                                var items = holder.items;
+                                var meta = holder.meta;
+                                if (done || !meta || !Array.isArray(items) || !items.every(isChapter)) return;
+                                if (items.length === 0 && meta.total !== 0) return;
+                                if (typeof meta.page !== "number" || typeof meta.lastPage !== "number") {
+                                    done = true;
+                                    failFn("Chapter list has no page numbers");
+                                    return;
+                                }
+                                if (meta.page !== page) return;
+                                chapters.push.apply(chapters, items);
+                                if (items.some(function (item) { return item.id === latestChapterId; })) {
+                                    done = true;
+                                    passFn(JSON.stringify(chapters));
+                                    return;
+                                }
+                                if (!meta.hasNext || page >= Math.min(meta.lastPage, maxPages)) {
+                                    done = true;
+                                    var seen = {};
+                                    chapters.forEach(function (item) { seen[item.id] = true; });
+                                    var count = Object.keys(seen).length;
+                                    if (count === meta.total) {
+                                        passFn(JSON.stringify(chapters));
+                                    } else {
+                                        failFn("Got " + count + " of " + meta.total + " chapters");
+                                    }
+                                    return;
+                                }
+                                page++;
+                                setTimeout(function () {
+                                    var url = new URL(location.href);
+                                    url.searchParams.set("page", String(page));
+                                    history.pushState(history.state, "", url);
+                                    dispatchEvent(new PopStateEvent("popstate", { state: history.state }));
+                                }, pageDelayMs);
                             };
-                            const capture = parsed => {
-                                try {
-                                    const items = parsed?.result?.items;
-                                    if (state.submitted || !Array.isArray(items) || items.length === 0) return false;
-                                    // Only chapter-like rows: the title page also fires manga-list
-                                    // queries (related/search) whose items carry `id` but no chapter
-                                    // number — capturing those used to crash the strict parser.
-                                    const isChapterLike = item => item && item.id !== undefined && (
-                                        (item.number !== undefined && item.number !== null) ||
-                                        (item.chap !== undefined && item.chap !== null) ||
-                                        (item.chapter !== undefined && item.chapter !== null && typeof item.chapter !== 'object') ||
-                                        /-chapter-/i.test(item.url || '') ||
-                                        (!item.url && /\d/.test(item.name || ''))
-                                    );
-                                    const likes = items.filter(isChapterLike);
-                                    if (likes.length === 0) return false;
-                                    const meta = parsed.result.meta || parsed.result.pagination || {};
-                                    const page = meta.page || 1;
-                                    const lastPage = meta.lastPage || meta.last_page || page;
-                                    if (state.seen.has(page)) return true;
-                                    state.seen.add(page);
-                                    state.items.push(...likes);
-                                    if ((meta.hasNext || page < lastPage) && !state.nextClicks.has(page)) {
-                                        state.nextClicks.add(page);
-                                        window.$interfaceName.resetTimer();
-                                        let tries = 0;
-                                        const interval = setInterval(() => {
-                                            const button = findNextButton(page);
-                                            if (button) { button.click(); clearInterval(interval); }
-                                            else if (++tries > 500) { clearInterval(interval); submit(); }
-                                        }, 10);
-                                    } else submit();
-                                    return true;
-                                } catch (e) { return false; }
-                            };
-                            const proxiedParse = new Proxy(JSON.parse, { apply(target, thisArg, args) { const parsed = Reflect.apply(target, thisArg, args); capture(parsed); return parsed; } });
-                            proxiedParse.__comixChapterCaptureInstalled = true;
-                            JSON.parse = proxiedParse;
-                            try {
-                                const raw = document.querySelector('script#initial-data')?.textContent;
-                                const queries = raw && JSON.parse(raw).queries;
-                                if (queries) Object.values(queries).some(capture);
-                            } catch (e) {}
-                            return null;
-                        })();
+                        })(null, $chapterPath, $MAX_CHAPTER_PAGES, $CHAPTER_PAGE_DELAY_MS, pass, fail);
+                        var capture = function (holder) {
+                            setTimeout(function () { try { drive(holder); } catch (e) {} }, 0);
+                        };
+                        var defineProperty = Object.defineProperty;
+                        defineProperty(Object.prototype, "items", {
+                            configurable: true,
+                            set: function (value) {
+                                defineProperty(this, "items", {
+                                    value: value,
+                                    writable: true,
+                                    enumerable: true,
+                                    configurable: true
+                                });
+                                capture(this);
+                            }
+                        });
+                        Object.defineProperty = function (target, key, descriptor) {
+                            var result = defineProperty.apply(this, arguments);
+                            if (key === "items" && descriptor && "value" in descriptor) capture(target);
+                            return result;
+                        };
+                        try {
+                            var rawEl = document.querySelector('script#initial-data');
+                            var raw = rawEl && rawEl.textContent;
+                            var queries = raw && JSON.parse(raw).queries;
+                            if (queries) Object.values(queries).forEach(function (q) {
+                                try { drive(q); } catch (e) {}
+                                try { if (q && q.result) drive(q.result); } catch (e) {}
+                            });
+                        } catch (e) {}
+                        return null;
+                    })();
                     """.trimIndent()
                 },
             )
@@ -582,64 +670,79 @@ class Comix : HttpSource(), ConfigurableSource {
     override fun fetchPageList(chapter: SChapter): Observable<List<Page>> = Observable.fromCallable {
         val request = GET(getChapterUrl(chapter), headers)
         val document = client.newCall(request).execute().asJsoup()
-        
+
         // SUPERFAST OPTIMIZATION: Read directly from page JSON without launching the browser
         val initialData = document.selectFirst("script#initial-data")?.data()
-        var pagesPayload: ChapterResponse.Pages? = null
-        
+        var pagesPayload: ChapterPages? = null
+
         if (initialData != null) {
             runCatching {
                 val root = Json.parseToJsonElement(initialData) as? JsonObject ?: return@runCatching
                 val queries = root["queries"] as? JsonObject ?: return@runCatching
                 queries.values.forEach { value ->
-                    val parsed = runCatching { value.toString().parseAs<ChapterResponse>() }.getOrNull()
-                    if (parsed?.result?.pages != null) {
-                        pagesPayload = parsed.result.pages
-                    }
+                    parsePagesHolder(value.toString())?.let { pagesPayload = it }
                 }
             }
         }
 
         val pages = pagesPayload ?: run {
+            // The chapter page loads its page list through the site's own
+            // /api/v1/chapters API (token-signed in page JS). Hook the decoded
+            // API responses exactly like the official extension: the first
+            // holder with page-like items (no meta) wins.
             val payload = runInWebView(
                 document = document,
                 buildScript = { interfaceName ->
                     """
                     (function () {
-                        const payloadKey = '__comixPagePayload';
-                        const capture = parsed => {
+                        if (window.__comixPagesInstalled) return null;
+                        window.__comixPagesInstalled = true;
+                        var pass = function (text) { window.$interfaceName.passPayload(text); };
+                        var handle = function (holder) {
                             try {
-                                if (parsed?.result?.pages) {
-                                    window[payloadKey] = JSON.stringify(parsed);
-                                    window.$interfaceName.passPayload(window[payloadKey]);
-                                    return true;
-                                }
+                                var items = holder && holder.items;
+                                if (!holder || holder.meta || !Array.isArray(items) || items.length === 0) return;
+                                var ok = items.every(function (item) { return item && typeof item.url === "string"; });
+                                if (ok) pass(JSON.stringify(holder));
                             } catch (e) {}
-                            return false;
                         };
-                        if (window[payloadKey]) return window[payloadKey];
-                        try {
-                            const raw = document.querySelector('script#initial-data')?.textContent;
-                            if (raw) { Object.values(JSON.parse(raw).queries || {}).some(capture); }
-                        } catch (e) {}
-                        if (window[payloadKey]) return window[payloadKey];
-                        if (JSON.parse.__comixPageCaptureInstalled) return null;
-                        
-                        const proxiedParse = new Proxy(JSON.parse, {
-                            apply(target, thisArg, args) {
-                                const parsed = Reflect.apply(target, thisArg, args);
-                                capture(parsed);
-                                return parsed;
+                        var capture = function (holder) {
+                            setTimeout(function () { try { handle(holder); } catch (e) {} }, 0);
+                        };
+                        var defineProperty = Object.defineProperty;
+                        defineProperty(Object.prototype, "items", {
+                            configurable: true,
+                            set: function (value) {
+                                defineProperty(this, "items", {
+                                    value: value,
+                                    writable: true,
+                                    enumerable: true,
+                                    configurable: true
+                                });
+                                capture(this);
                             }
                         });
-                        proxiedParse.__comixPageCaptureInstalled = true;
-                        JSON.parse = proxiedParse;
-                        return window[payloadKey] || null;
+                        Object.defineProperty = function (target, key, descriptor) {
+                            var result = defineProperty.apply(this, arguments);
+                            if (key === "items" && descriptor && "value" in descriptor) capture(target);
+                            return result;
+                        };
+                        try {
+                            var rawEl = document.querySelector('script#initial-data');
+                            var raw = rawEl && rawEl.textContent;
+                            var queries = raw && JSON.parse(raw).queries;
+                            if (queries) Object.values(queries).forEach(function (q) {
+                                try { handle(q); } catch (e) {}
+                                try { if (q && q.result) handle(q.result); } catch (e) {}
+                                try { if (q && q.result && q.result.pages) handle(q.result.pages); } catch (e) {}
+                            });
+                        } catch (e) {}
+                        return null;
                     })();
                     """.trimIndent()
                 },
             )
-            payload.parseAs<ChapterResponse>().result?.pages
+            parsePagesHolder(payload)
                 ?: throw Exception("Could not find page list in chapter data")
         }
 
@@ -648,19 +751,35 @@ class Comix : HttpSource(), ConfigurableSource {
         pages.items.mapIndexedNotNull { index, img ->
             val raw = img.resolvedUrl()
             if (raw.isBlank()) return@mapIndexedNotNull null
-            val full = if (raw.startsWith("http")) raw else if (base.isNotBlank()) "$base/${raw.trimStart('/')}" else return@mapIndexedNotNull null
-            val isV3 = img.s == 1 || full.contains("?v3")
-            val isLegacyScramble = !isV3 && (index + 1) % 4 == 0
-            val url = when {
-                isV3 -> full.toHttpUrl().newBuilder().apply {
-                    if (!full.toHttpUrl().queryParameterNames.contains("v3")) addQueryParameter("v3", null)
-                }.build().toString()
-                isLegacyScramble -> "$full#scrambled"
-                else -> full
-            }
+            val full = (if (raw.startsWith("http")) raw else if (base.isNotBlank()) "$base/${raw.trimStart('/')}" else return@mapIndexedNotNull null).toHttpUrl()
+            // V3 pages need the query flag so the server returns grid-scramble headers.
+            val isV3 = img.s == 1 || "v3" in full.queryParameterNames
+            val url = full.newBuilder().apply {
+                if (isV3 && "v3" !in full.queryParameterNames) addQueryParameter("v3", null)
+                val altHosts = pages.altHosts(full.host, index)
+                if (altHosts.isNotEmpty()) fragment(ALT_HOSTS_FRAGMENT + altHosts.joinToString(","))
+            }.build().toString()
             Page(index, imageUrl = url)
         }
     }
+
+    /** Accepts a bare pages holder or a `{result:{pages}}` chapter query envelope. Never throws. */
+    private fun parsePagesHolder(payload: String): ChapterPages? = runCatching {
+        val el = Json.parseToJsonElement(payload)
+        val result = (el as? JsonObject)?.get("result") as? JsonObject
+        val candidates = listOfNotNull(
+            el as? JsonObject,
+            result,
+            result?.get("pages") as? JsonObject,
+        )
+        candidates.firstNotNullOfOrNull { obj ->
+            val items = obj["items"] as? JsonArray ?: return@firstNotNullOfOrNull null
+            if (items.isEmpty()) return@firstNotNullOfOrNull null
+            if (obj["meta"] is JsonObject) return@firstNotNullOfOrNull null
+            runCatching { json.decodeFromString<ChapterPages>(obj.toString()) }.getOrNull()
+                ?.takeIf { pages -> pages.items.any { it.resolvedUrl().isNotBlank() } }
+        }
+    }.getOrNull()
 
     override fun pageListRequest(chapter: SChapter): Request = throw UnsupportedOperationException()
     override fun pageListParse(response: Response): List<Page> = throw UnsupportedOperationException()
@@ -794,6 +913,7 @@ class Comix : HttpSource(), ConfigurableSource {
         }
 
         if (!completed) throw Exception("Timed out waiting for WebView payload (url=$lastUrl)")
+        payloadResult.error?.let { throw Exception(it) }
         return payloadResult.payload ?: throw Exception("Failed to capture WebView payload")
     }
 
@@ -801,12 +921,23 @@ class Comix : HttpSource(), ConfigurableSource {
         private val signal = Semaphore(0)
         @Volatile var payload: String? = null
             private set
+        @Volatile var error: String? = null
+            private set
 
         @JavascriptInterface
         @Suppress("UNUSED")
         fun passPayload(data: String) {
             if (payload == null) {
                 payload = data
+                signal.release()
+            }
+        }
+
+        @JavascriptInterface
+        @Suppress("UNUSED")
+        fun failPayload(data: String) {
+            if (payload == null && error == null) {
+                error = data.ifBlank { "Site rejected the request" }
                 signal.release()
             }
         }
@@ -951,6 +1082,10 @@ class Comix : HttpSource(), ConfigurableSource {
         private const val WEBVIEW_START_TIMEOUT_SECONDS = 120L
         private const val WEBVIEW_TIMEOUT_SECONDS = 90L
         private const val SCRIPT_RETRY_INTERVAL_MS = 10L
+        private const val MAX_CHAPTER_PAGES = 1000
+        private const val CHAPTER_PAGE_DELAY_MS = 500
+        private const val ALT_HOSTS_FRAGMENT = "alt="
+        private val SERVER_ERROR_CODES = setOf(502, 503, 522, 523)
         private const val WEBVIEW_WIDTH = 1080
         private const val WEBVIEW_HEIGHT = 1920
         private val SCRAMBLE_PATH_FALLBACK_REGEX = Regex("/(?:i5|s?i+)/")
@@ -1210,7 +1345,7 @@ class Filters {
         }
     }
 
-    fun getFilterList() = FilterList(SortFilter(getSortables()), ContentRatingFilter(), TypeFilter(), Filter.Separator(), Filter.Header("Tags — comma separated"), TagsFilter(), Filter.Header("Match: AND requires every selection, OR matches any"), MatchModeFilter(), GenreFilter(getGenres()), FormatFilter(getFormats()), Filter.Separator(), DemographicFilter(getDemographics()), StatusFilter(), MinChapterFilter(), Filter.Separator(), Filter.Header("Release Year"), YearFromFilter(), YearToFilter(), Filter.Separator(), Filter.Header("Author / Artist — comma separated"), AuthorFilter(), ArtistFilter())
+    fun getFilterList() = FilterList(SortFilter(getSortables()), ContentRatingFilter(), TypeFilter(), Filter.Separator(), Filter.Header("Tags â comma separated"), TagsFilter(), Filter.Header("Match: AND requires every selection, OR matches any"), MatchModeFilter(), GenreFilter(getGenres()), FormatFilter(getFormats()), Filter.Separator(), DemographicFilter(getDemographics()), StatusFilter(), MinChapterFilter(), Filter.Separator(), Filter.Header("Release Year"), YearFromFilter(), YearToFilter(), Filter.Separator(), Filter.Header("Author / Artist â comma separated"), AuthorFilter(), ArtistFilter())
 
     private open class UriPartFilter(name: String, private val param: String, private val vals: Array<Pair<String, String>>, defaultValue: String? = null) : Filter.Select<String>(name, vals.map { it.first }.toTypedArray(), vals.indexOfFirst { it.second == defaultValue }.takeIf { it != -1 } ?: 0), UriFilter { override fun addToUri(builder: HttpUrl.Builder) { builder.addQueryParameter(param, vals[state].second) } }
     private open class UriMultiSelectOption(name: String, val value: String) : Filter.CheckBox(name)
@@ -1233,7 +1368,7 @@ class Filters {
     private class ContentRatingFilter : UriPartFilter("Content rating", "content_rating", arrayOf("Use preference" to "", "Safe only" to "safe", "Up to Suggestive" to "suggestive", "Up to Erotica" to "erotica", "Up to Pornographic" to "pornographic")) { override fun addToUri(builder: HttpUrl.Builder) { if (state != 0) { val selected = when (state) { 1 -> "safe"; 2 -> "suggestive"; 3 -> "erotica"; 4 -> "pornographic"; else -> "" }; Filters.getContentRatingsUpTo(selected).takeIf { it.isNotEmpty() }?.let { builder.addQueryParameter("content_rating", it.joinToString(",")) } } } }
     private class MinChapterFilter : Filter.Text("Minimum Chapter Length"), UriFilter { override fun addToUri(builder: HttpUrl.Builder) { if (state.isNotEmpty()) { val value = state.toIntOrNull()?.takeIf { it > 0 } ?: throw IllegalArgumentException("Minimum chapter length must be a positive integer greater than 0"); builder.addQueryParameter("min_chap", value.toString()) } } }
     private class Sortable(val title: String, val value: String) { override fun toString(): String = title }
-    private fun getSortables() = arrayOf(Sortable("Best Match", "relevance"), Sortable("Latest update", "chapter_updated_at"), Sortable("Recently added", "created_at"), Sortable("Title", "title"), Sortable("Year", "year"), Sortable("Highest rated", "score"), Sortable("Most viewed · 7 days", "views_7d"), Sortable("Most viewed · 30 days", "views_30d"), Sortable("Most viewed · 90 days", "views_90d"), Sortable("Most viewed · all time", "views_total"), Sortable("Most followed", "follows_total"))
+    private fun getSortables() = arrayOf(Sortable("Best Match", "relevance"), Sortable("Latest update", "chapter_updated_at"), Sortable("Recently added", "created_at"), Sortable("Title", "title"), Sortable("Year", "year"), Sortable("Highest rated", "score"), Sortable("Most viewed Â· 7 days", "views_7d"), Sortable("Most viewed Â· 30 days", "views_30d"), Sortable("Most viewed Â· 90 days", "views_90d"), Sortable("Most viewed Â· all time", "views_total"), Sortable("Most followed", "follows_total"))
     private class SortFilter(private val sortables: Array<Sortable>) : Filter.Sort("Sort By", sortables.map(Sortable::title).toTypedArray(), Selection(1, false)), UriFilter { override fun addToUri(builder: HttpUrl.Builder) { if (state != null) { val query = sortables[state!!.index].value; val value = if (state!!.ascending) "asc" else "desc"; builder.addQueryParameter("order[$query]", value) } } }
 }
 
@@ -1253,7 +1388,7 @@ class Filters {
     private val originalLanguage: String? = null, private val url: String? = null
 ) {
     @Serializable class Poster(private val small: String? = null, private val medium: String? = null, private val large: String? = null) { fun from(quality: String?) = when (quality) { "large" -> large ?: medium ?: small ?: ""; "small" -> small ?: medium ?: large ?: ""; else -> medium ?: large ?: small ?: "" } }
-    private val fancyScore: String get() { if (ratedAvg == 0.0) return ""; val score = ratedAvg.toBigDecimal(); val stars = score.div(BigDecimal(2)).setScale(0, RoundingMode.HALF_UP).toInt(); val scoreString = if (score.scale() == 0) score.toPlainString() else score.stripTrailingZeros().toPlainString(); return buildString { append("★".repeat(stars)); if (stars < 5) append("☆".repeat(5 - stars)); append(" $scoreString") } }
+    private val fancyScore: String get() { if (ratedAvg == 0.0) return ""; val score = ratedAvg.toBigDecimal(); val stars = score.div(BigDecimal(2)).setScale(0, RoundingMode.HALF_UP).toInt(); val scoreString = if (score.scale() == 0) score.toPlainString() else score.stripTrailingZeros().toPlainString(); return buildString { append("â".repeat(stars)); if (stars < 5) append("â".repeat(5 - stars)); append(" $scoreString") } }
     fun toSManga(posterQuality: String?, altTitlesInDesc: Boolean = false, scorePosition: String, showExtraInfo: Boolean = true, showTags: Boolean = false) = SManga.create().apply {
         url = this@Manga.url?.substringAfter("/title") ?: "/$hid"
         title = this@Manga.title
@@ -1287,7 +1422,7 @@ class Filters {
 /**
  * A comix.to chapter row. The site has been observed returning chapter items
  * whose `number` is null, a non-numeric string, or missing entirely (oneshots,
- * side stories, season-break placeholders) — and the title page also fires
+ * side stories, season-break placeholders) â and the title page also fires
  * manga-list queries whose items carry `id` but no chapter number at all.
  * The old strict `@Serializable` model (required `number: Double`) turned any
  * single such row into a `MissingFieldException` that wiped the ENTIRE chapter
@@ -1388,7 +1523,8 @@ class Chapter(
 
         /** Mirrors the old Meta/Pagination.hasNextPage() for raw query JSON. */
         fun queryHasNextPage(queryEl: JsonElement): Boolean {
-            val result = (queryEl as? JsonObject)?.get("result") as? JsonObject ?: return false
+            val obj = queryEl as? JsonObject ?: return false
+            val result = (obj["result"] as? JsonObject) ?: obj
             val meta = (result["meta"] ?: result["pagination"]) as? JsonObject ?: return false
             fun JsonObject.intOf(key: String, alt: String, default: Int): Int =
                 (this[key] as? JsonPrimitive)?.content?.toIntOrNull()
@@ -1432,15 +1568,25 @@ class Chapter(
     }
 }
 
-@Serializable class ChapterResponse(val result: ChapterResult? = null) {
-    @Serializable class ChapterResult(val pages: Pages? = null)
-    @Serializable class Pages(
-        val baseUrl: String = "",
-        @SerialName("base_url") val baseUrlAlt: String = "",
-        val items: List<PageDto> = emptyList(),
-    ) {
-        fun resolvedBase(): String = baseUrl.ifBlank { baseUrlAlt }
+@Serializable class ChapterPages(
+    val baseUrl: String = "",
+    @SerialName("base_url") val baseUrlAlt: String = "",
+    val items: List<PageDto> = emptyList(),
+    private val alt: List<String>? = null,
+    private val node: String? = null,
+) {
+    fun resolvedBase(): String = baseUrl.ifBlank { baseUrlAlt }
+
+    // Alt hosts in the site reader's retry order
+    fun altHosts(host: String, index: Int): List<String> {
+        if (alt.isNullOrEmpty()) return emptyList()
+        val label = host.substringBefore('.')
+        val start = index % alt.size
+        val domains = alt.drop(start) + alt.take(start)
+        val hosts = domains.map { "$label.$it" } + domains.map { "${node ?: label}.$it" }
+        return List(6) { hosts[it % hosts.size] }
     }
+
     @Serializable class PageDto(
         val url: String = "",
         val src: String = "",
