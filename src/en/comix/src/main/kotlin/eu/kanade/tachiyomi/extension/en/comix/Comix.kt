@@ -1388,7 +1388,7 @@ class Filters {
     private val originalLanguage: String? = null, private val url: String? = null
 ) {
     @Serializable class Poster(private val small: String? = null, private val medium: String? = null, private val large: String? = null) { fun from(quality: String?) = when (quality) { "large" -> large ?: medium ?: small ?: ""; "small" -> small ?: medium ?: large ?: ""; else -> medium ?: large ?: small ?: "" } }
-    private val fancyScore: String get() { if (ratedAvg == 0.0) return ""; val score = ratedAvg.toBigDecimal(); val stars = score.div(BigDecimal(2)).setScale(0, RoundingMode.HALF_UP).toInt(); val scoreString = if (score.scale() == 0) score.toPlainString() else score.stripTrailingZeros().toPlainString(); return buildString { append("â".repeat(stars)); if (stars < 5) append("â".repeat(5 - stars)); append(" $scoreString") } }
+    private val fancyScore: String get() { if (ratedAvg == 0.0) return ""; val score = ratedAvg.toBigDecimal(); val stars = score.div(BigDecimal(2)).setScale(0, RoundingMode.HALF_UP).toInt(); val scoreString = if (score.scale() == 0) score.toPlainString() else score.stripTrailingZeros().toPlainString(); return buildString { append("★".repeat(stars)); if (stars < 5) append("☆".repeat(5 - stars)); append(" $scoreString") } }
     fun toSManga(posterQuality: String?, altTitlesInDesc: Boolean = false, scorePosition: String, showExtraInfo: Boolean = true, showTags: Boolean = false) = SManga.create().apply {
         url = this@Manga.url?.substringAfter("/title") ?: "/$hid"
         title = this@Manga.title
