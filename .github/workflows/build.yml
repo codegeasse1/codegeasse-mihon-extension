@@ -25,6 +25,10 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # v3 default installs the long-removed "tools" package -> sdkmanager exit 1.
+          # Upstream master already changed the default to platform-tools only.
+          packages: platform-tools
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -401,6 +405,10 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # v3 default installs the long-removed "tools" package -> sdkmanager exit 1.
+          # Upstream master already changed the default to platform-tools only.
+          packages: platform-tools
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
