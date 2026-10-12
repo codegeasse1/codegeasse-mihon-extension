@@ -39,7 +39,11 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -443,12 +447,12 @@ class Comix : HttpSource(), ConfigurableSource {
         
         if (initialData != null) {
             runCatching {
-                val queries = initialData.parseAs<JsonObject>()["queries"] as? JsonObject
-                queries?.values?.forEach { value ->
-                    val parsed = runCatching { value.toString().parseAs<ChapterDetailsResponse>() }.getOrNull()
-                    val items = parsed?.result?.items
-                    if (!items.isNullOrEmpty() && items.first().id != 0) {
-                        if (parsed.result.hasNextPage() == false) {
+                val root = Json.parseToJsonElement(initialData) as? JsonObject ?: return@runCatching
+                val queries = root["queries"] as? JsonObject ?: return@runCatching
+                queries.values.forEach { value ->
+                    val items = Chapter.parsePayload(value.toString())
+                    if (items.isNotEmpty() && items.first().id != 0) {
+                        if (!Chapter.queryHasNextPage(value)) {
                             fastPathChapters = items // Skipped the WebView entirely!
                         }
                     }
@@ -480,13 +484,25 @@ class Comix : HttpSource(), ConfigurableSource {
                             const capture = parsed => {
                                 try {
                                     const items = parsed?.result?.items;
-                                    if (state.submitted || !Array.isArray(items) || items.length === 0 || items[0]?.id === undefined) return false;
+                                    if (state.submitted || !Array.isArray(items) || items.length === 0) return false;
+                                    // Only chapter-like rows: the title page also fires manga-list
+                                    // queries (related/search) whose items carry `id` but no chapter
+                                    // number — capturing those used to crash the strict parser.
+                                    const isChapterLike = item => item && item.id !== undefined && (
+                                        (item.number !== undefined && item.number !== null) ||
+                                        (item.chap !== undefined && item.chap !== null) ||
+                                        (item.chapter !== undefined && item.chapter !== null && typeof item.chapter !== 'object') ||
+                                        /-chapter-/i.test(item.url || '') ||
+                                        (!item.url && /\d/.test(item.name || ''))
+                                    );
+                                    const likes = items.filter(isChapterLike);
+                                    if (likes.length === 0) return false;
                                     const meta = parsed.result.meta || parsed.result.pagination || {};
                                     const page = meta.page || 1;
                                     const lastPage = meta.lastPage || meta.last_page || page;
                                     if (state.seen.has(page)) return true;
                                     state.seen.add(page);
-                                    state.items.push(...items);
+                                    state.items.push(...likes);
                                     if ((meta.hasNext || page < lastPage) && !state.nextClicks.has(page)) {
                                         state.nextClicks.add(page);
                                         window.$interfaceName.resetTimer();
@@ -513,14 +529,14 @@ class Comix : HttpSource(), ConfigurableSource {
                     """.trimIndent()
                 },
             )
-            payload.parseAs<List<Chapter>>()
+            Chapter.parsePayload(payload)
         }
 
         val filteredChapters = if (blacklist.isNotEmpty()) {
             allChapters.filter { ch ->
-                val scanlatorName = if (ch.group != null) ch.group.name else if (ch.isOfficial) "Official" else "Unknown"
+                val scanlatorName = ch.groupName ?: if (ch.isOfficial) "Official" else "Unknown"
                 val nameNormalized = scanlatorName.trim().lowercase()
-                val idStr = ch.group?.id?.toString()
+                val idStr = ch.groupId?.toString()
                 nameNormalized !in blacklist && idStr !in blacklist
             }
         } else {
@@ -528,7 +544,7 @@ class Comix : HttpSource(), ConfigurableSource {
         }
 
         val finalChapters: List<Chapter> = if (deduplicate) {
-            val chapterMap = LinkedHashMap<Number, Chapter>()
+            val chapterMap = LinkedHashMap<String, Chapter>()
             deduplicateChapters(chapterMap, filteredChapters)
             chapterMap.values.toList()
         } else {
@@ -541,20 +557,23 @@ class Comix : HttpSource(), ConfigurableSource {
     override fun chapterListRequest(manga: SManga): Request = throw UnsupportedOperationException()
     override fun chapterListParse(response: Response): List<SChapter> = throw UnsupportedOperationException()
 
-    private fun deduplicateChapters(chapterMap: LinkedHashMap<Number, Chapter>, items: List<Chapter>) {
+    private fun deduplicateChapters(chapterMap: LinkedHashMap<String, Chapter>, items: List<Chapter>) {
         for (ch in items) {
-            val current = chapterMap[ch.number]
+            // Numbered chapters dedupe by number; unnumbered specials dedupe by id
+            // so two different specials never collapse into one entry.
+            val key = ch.number?.toString() ?: "id:${ch.id}"
+            val current = chapterMap[key]
             if (current == null) {
-                chapterMap[ch.number] = ch
+                chapterMap[key] = ch
             } else {
                 val better = when {
                     ch.isOfficial && !current.isOfficial -> true
                     !ch.isOfficial && current.isOfficial -> false
-                    ch.group?.id == 10702 && current.group?.id != 10702 -> true
-                    ch.group?.id != 10702 && current.group?.id == 10702 -> false
+                    ch.groupId == 10702 && current.groupId != 10702 -> true
+                    ch.groupId != 10702 && current.groupId == 10702 -> false
                     else -> if (ch.votes != current.votes) ch.votes > current.votes else ch.id > current.id
                 }
-                if (better) chapterMap[ch.number] = ch
+                if (better) chapterMap[key] = ch
             }
         }
     }
@@ -570,8 +589,9 @@ class Comix : HttpSource(), ConfigurableSource {
         
         if (initialData != null) {
             runCatching {
-                val queries = initialData.parseAs<JsonObject>()["queries"] as? JsonObject
-                queries?.values?.forEach { value ->
+                val root = Json.parseToJsonElement(initialData) as? JsonObject ?: return@runCatching
+                val queries = root["queries"] as? JsonObject ?: return@runCatching
+                queries.values.forEach { value ->
                     val parsed = runCatching { value.toString().parseAs<ChapterResponse>() }.getOrNull()
                     if (parsed?.result?.pages != null) {
                         pagesPayload = parsed.result.pages
@@ -619,13 +639,16 @@ class Comix : HttpSource(), ConfigurableSource {
                     """.trimIndent()
                 },
             )
-            payload.parseAs<ChapterResponse>().result.pages
+            payload.parseAs<ChapterResponse>().result?.pages
+                ?: throw Exception("Could not find page list in chapter data")
         }
 
-        val base = pages.baseUrl.trimEnd('/')
+        val base = pages.resolvedBase().trimEnd('/')
 
-        pages.items.mapIndexed { index, img ->
-            val full = if (img.url.startsWith("http")) img.url else "$base/${img.url.trimStart('/')}"
+        pages.items.mapIndexedNotNull { index, img ->
+            val raw = img.resolvedUrl()
+            if (raw.isBlank()) return@mapIndexedNotNull null
+            val full = if (raw.startsWith("http")) raw else if (base.isNotBlank()) "$base/${raw.trimStart('/')}" else return@mapIndexedNotNull null
             val isV3 = img.s == 1 || full.contains("?v3")
             val isLegacyScramble = !isV3 && (index + 1) % 4 == 0
             val url = when {
@@ -1260,19 +1283,142 @@ class Filters {
 @Serializable class Meta(val page: Int = 1, private val lastPage: Int = 1, @SerialName("last_page") private val lastPageOld: Int = 1, val hasNext: Boolean = false) { val actualLastPage: Int get() = maxOf(lastPage, lastPageOld) }
 @Serializable class Pagination(val page: Int = 1, private val lastPage: Int = 1, @SerialName("last_page") private val lastPageOld: Int = 1) { val actualLastPage: Int get() = maxOf(lastPage, lastPageOld) }
 @Serializable class SearchResponse(val result: Items) { @Serializable class Items(val items: List<Manga> = emptyList(), private val meta: Meta? = null, private val pagination: Pagination? = null) { fun hasNextPage(): Boolean = when { meta != null -> meta.page < meta.actualLastPage; pagination != null -> pagination.page < pagination.actualLastPage; else -> false } } }
-@Serializable class ChapterDetailsResponse(val result: Items) { @Serializable class Items(val items: List<Chapter> = emptyList(), private val meta: Meta? = null, private val pagination: Pagination? = null) { fun hasNextPage(): Boolean = when { meta != null -> meta.page < meta.actualLastPage; pagination != null -> pagination.page < pagination.actualLastPage; else -> false } } }
 
-@Serializable class Chapter(
-    val id: Int, val url: String = "", val number: Double, private val name: String = "", val votes: Int = 0, private val createdAtFormatted: String = "", val group: ScanlationGroup? = null, val isOfficial: Boolean = false
+/**
+ * A comix.to chapter row. The site has been observed returning chapter items
+ * whose `number` is null, a non-numeric string, or missing entirely (oneshots,
+ * side stories, season-break placeholders) — and the title page also fires
+ * manga-list queries whose items carry `id` but no chapter number at all.
+ * The old strict `@Serializable` model (required `number: Double`) turned any
+ * single such row into a `MissingFieldException` that wiped the ENTIRE chapter
+ * list. This model parses every row leniently instead: rows that are not
+ * chapter-like are skipped, rows without a parseable number are kept with
+ * `number = null` (display falls back to the row title).
+ */
+class Chapter(
+    val id: Int,
+    val url: String,
+    val number: Double?,
+    private val name: String,
+    val votes: Int,
+    private val createdAt: String,
+    val groupId: Int?,
+    val groupName: String?,
+    val isOfficial: Boolean,
 ) {
-    @Serializable class ScanlationGroup(val id: Int? = null, val name: String)
-    companion object { private val DATE_REGEX = Regex("""^(\d+)\s*(s|m|h|d|w|mo|mos|y|yr|yrs|min|mins|sec|secs|hr|hrs|day|days|week|weeks|month|months|year|years)$""") }
+    companion object {
+        private val DATE_REGEX = Regex("""^(\d+)\s*(s|m|h|d|w|mo|mos|y|yr|yrs|min|mins|sec|secs|hr|hrs|day|days|week|weeks|month|months|year|years)$""")
+        private val NUM_REGEX = Regex("""(\d+(?:\.\d+)?)""")
+        private val CHAPTER_URL_REGEX = Regex("""-chapter-(\d+(?:\.\d+)?)""")
+
+        private fun JsonElement?.asDoubleOrNull(): Double? =
+            (this as? JsonPrimitive)?.content?.toDoubleOrNull()
+
+        private fun JsonElement?.asIntOrNull(): Int? {
+            val content = (this as? JsonPrimitive)?.takeUnless { it is JsonNull }?.content ?: return null
+            return content.toIntOrNull() ?: content.toDoubleOrNull()?.toInt()
+        }
+
+        private fun JsonElement?.asStringOrNull(): String? =
+            (this as? JsonPrimitive)?.takeUnless { it is JsonNull }?.content
+
+        private fun JsonElement?.asBoolOrFalse(): Boolean =
+            (this as? JsonPrimitive)?.content?.equals("true", ignoreCase = true) == true ||
+                (this as? JsonPrimitive)?.content == "1"
+
+        private fun JsonObject.isChapterLike(): Boolean =
+            (this["number"] ?: this["chap"] ?: this["chapter"]) != null ||
+                CHAPTER_URL_REGEX.containsMatchIn(this["url"].asStringOrNull().orEmpty()) ||
+                (this["url"].asStringOrNull().isNullOrBlank() &&
+                    NUM_REGEX.containsMatchIn(this["name"].asStringOrNull().orEmpty()))
+
+        fun fromJsonObject(o: JsonObject): Chapter? {
+            if (!o.isChapterLike()) return null
+            val id = o["id"].asIntOrNull()
+                ?: o["chapter_id"].asIntOrNull()
+                ?: o["chapterId"].asIntOrNull()
+                ?: return null
+            val url = o["url"].asStringOrNull().orEmpty()
+            val rawName = o["name"].asStringOrNull().orEmpty()
+            val number = o["number"].asDoubleOrNull()
+                ?: o["chap"].asDoubleOrNull()
+                ?: o["chapter"].asDoubleOrNull()
+                ?: rawName.takeIf { it.isNotBlank() }?.let { NUM_REGEX.find(it)?.value?.toDoubleOrNull() }
+                ?: CHAPTER_URL_REGEX.find(url)?.groupValues?.get(1)?.toDoubleOrNull()
+            val groupEl = o["group"] ?: o["scanlation_group"] ?: o["scanlationGroup"]
+            val flatGroupName = o["group_name"].asStringOrNull() ?: o["groupName"].asStringOrNull()
+            val (groupId, groupName) = when (groupEl) {
+                is JsonObject -> groupEl["id"].asIntOrNull() to
+                    (groupEl["name"].asStringOrNull() ?: groupEl["title"].asStringOrNull() ?: flatGroupName)
+                is JsonPrimitive -> null to (groupEl.asStringOrNull() ?: flatGroupName)
+                else -> null to flatGroupName
+            }
+            return Chapter(
+                id = id,
+                url = url,
+                number = number,
+                name = rawName,
+                votes = o["votes"].asIntOrNull()
+                    ?: o["vote_count"].asIntOrNull()
+                    ?: o["voteCount"].asIntOrNull() ?: 0,
+                createdAt = o["createdAtFormatted"].asStringOrNull()
+                    ?: o["createdAt"].asStringOrNull()
+                    ?: o["created_at"].asStringOrNull().orEmpty(),
+                groupId = groupId,
+                groupName = groupName,
+                isOfficial = o["isOfficial"].asBoolOrFalse() || o["is_official"].asBoolOrFalse(),
+            )
+        }
+
+        private fun parseItemsArray(arr: JsonArray): List<Chapter> =
+            arr.mapNotNull { (it as? JsonObject)?.let(::fromJsonObject) }
+
+        /** Accepts a bare `[...]` array or an `{result:{items:[...]}}` envelope. Never throws. */
+        fun parsePayload(payload: String): List<Chapter> = runCatching {
+            when (val el = Json.parseToJsonElement(payload)) {
+                is JsonArray -> parseItemsArray(el)
+                is JsonObject -> {
+                    val result = el["result"]
+                    val items = (result as? JsonObject)?.get("items") ?: el["items"]
+                    (items as? JsonArray)?.let(::parseItemsArray) ?: emptyList()
+                }
+                else -> emptyList()
+            }
+        }.getOrDefault(emptyList())
+
+        /** Mirrors the old Meta/Pagination.hasNextPage() for raw query JSON. */
+        fun queryHasNextPage(queryEl: JsonElement): Boolean {
+            val result = (queryEl as? JsonObject)?.get("result") as? JsonObject ?: return false
+            val meta = (result["meta"] ?: result["pagination"]) as? JsonObject ?: return false
+            fun JsonObject.intOf(key: String, alt: String, default: Int): Int =
+                (this[key] as? JsonPrimitive)?.content?.toIntOrNull()
+                    ?: (this[alt] as? JsonPrimitive)?.content?.toIntOrNull() ?: default
+            (meta["hasNext"] as? JsonPrimitive)?.content?.let {
+                return it.equals("true", ignoreCase = true)
+            }
+            val page = meta.intOf("page", "page", 1)
+            val last = maxOf(meta.intOf("lastPage", "last_page", 1), meta.intOf("actualLastPage", "actual_last_page", 1))
+            return page < last
+        }
+    }
     fun toSChapter(mangaSlug: String) = SChapter.create().apply {
-        url = this@Chapter.url.indexOf("/title/").let { index -> if (index != -1) this@Chapter.url.substring(index + 1) else "title/$mangaSlug/$id-chapter-${number.toString().removeSuffix(".0")}" }
-        name = buildString { append("Chapter "); append(this@Chapter.number.toString().removeSuffix(".0")); this@Chapter.name.takeUnless { it.isEmpty() }?.let { append(": $it") } }
-        date_upload = parseRelativeDate(this@Chapter.createdAtFormatted)
-        chapter_number = this@Chapter.number.toFloat()
-        scanlator = if (this@Chapter.group != null) this@Chapter.group.name else if (this@Chapter.isOfficial) "Official" else "Unknown"
+        val num = this@Chapter.number
+        url = this@Chapter.url.indexOf("/title/").let { index ->
+            if (index != -1) this@Chapter.url.substring(index + 1)
+            else "title/$mangaSlug/$id-chapter-${num?.toString()?.removeSuffix(".0") ?: "0"}"
+        }
+        name = if (num != null) {
+            buildString {
+                append("Chapter ")
+                append(num.toString().removeSuffix(".0"))
+                this@Chapter.name.takeUnless { it.isEmpty() }?.let { append(": $it") }
+            }
+        } else {
+            this@Chapter.name.ifEmpty { "Chapter $id" }
+        }
+        date_upload = parseRelativeDate(this@Chapter.createdAt)
+        chapter_number = num?.toFloat() ?: 0f
+        scanlator = this@Chapter.groupName ?: if (this@Chapter.isOfficial) "Official" else "Unknown"
     }
     private fun parseRelativeDate(dateStr: String): Long {
         if (dateStr.isEmpty()) return 0L
@@ -1286,8 +1432,22 @@ class Filters {
     }
 }
 
-@Serializable class ChapterResponse(val result: ChapterResult) {
-    @Serializable class ChapterResult(val pages: Pages)
-    @Serializable class Pages(val baseUrl: String, val items: List<PageDto>)
-    @Serializable class PageDto(val url: String, val s: Int = 0)
+@Serializable class ChapterResponse(val result: ChapterResult? = null) {
+    @Serializable class ChapterResult(val pages: Pages? = null)
+    @Serializable class Pages(
+        val baseUrl: String = "",
+        @SerialName("base_url") val baseUrlAlt: String = "",
+        val items: List<PageDto> = emptyList(),
+    ) {
+        fun resolvedBase(): String = baseUrl.ifBlank { baseUrlAlt }
+    }
+    @Serializable class PageDto(
+        val url: String = "",
+        val src: String = "",
+        val path: String = "",
+        val link: String = "",
+        val s: Int = 0,
+    ) {
+        fun resolvedUrl(): String = url.ifBlank { src }.ifBlank { path }.ifBlank { link }
+    }
 }
