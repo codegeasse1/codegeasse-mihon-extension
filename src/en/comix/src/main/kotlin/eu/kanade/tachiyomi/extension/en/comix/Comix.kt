@@ -56,6 +56,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
 import org.json.JSONObject
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
 import rx.Observable
 import java.io.IOException
 import java.math.BigDecimal
@@ -532,6 +533,105 @@ class Comix : HttpSource(), ConfigurableSource {
 
         val document = client.newCall(GET(getMangaUrl(manga), headers)).execute().asJsoup()
 
+        // v11: prefer the site’s own rendered chapter rows (?page=N pager,
+        // plain HTTP, no token signing, immune to JS-bundle renames). Uses
+        // the WebView API walk only when the rows are absent (SPA markup) or
+        // a pager page fails. The DOM path only returns on a clean pager end.
+        val allChapters: List<Chapter> = fetchChaptersViaDom(mangaSlug)
+            ?: fetchChaptersViaWebView(document, mangaSlug)
+
+
+        val filteredChapters = if (blacklist.isNotEmpty()) {
+            allChapters.filter { ch ->
+                val scanlatorName = ch.groupName ?: if (ch.isOfficial) "Official" else "Unknown"
+                val nameNormalized = scanlatorName.trim().lowercase()
+                val idStr = ch.groupId?.toString()
+                nameNormalized !in blacklist && idStr !in blacklist
+            }
+        } else {
+            allChapters
+        }
+
+        val finalChapters: List<Chapter> = if (deduplicate) {
+            val chapterMap = LinkedHashMap<String, Chapter>()
+            deduplicateChapters(chapterMap, filteredChapters)
+            chapterMap.values.toList()
+        } else {
+            filteredChapters
+        }
+
+        finalChapters.map { it.toSChapter(mangaSlug) }
+    }
+
+    // v11 fast path: read the site’s own rendered chapter rows
+    // (.mchap-item) through the ?page=N pager with plain HTTP. Returns null
+    // when the rows are absent or any page fails, letting the caller fall
+    // back to the WebView walk. Only a clean pager end yields a list.
+    private fun fetchChaptersViaDom(mangaSlug: String): List<Chapter>? {
+        val seenIds = LinkedHashSet<Int>()
+        val out = ArrayList<Chapter>()
+        var page = 1
+        while (page <= MAX_CHAPTER_PAGES) {
+            val url = if (page == 1) "$baseUrl/title/$mangaSlug" else "$baseUrl/title/$mangaSlug?page=$page"
+            val doc = try {
+                client.newCall(GET(url, headers)).execute().asJsoup()
+            } catch (e: Exception) {
+                return null
+            }
+            val rows = doc.select(".mchap-item")
+            if (rows.isEmpty()) {
+                if (page == 1) return null
+                // Later empty page: clean end only when this still looks
+                // like a title page; a challenge/error page means fallback.
+                return if (looksLikeTitlePage(doc)) out else null
+            }
+            var added = 0
+            for (row in rows) {
+                val parsed = parseDomChapterRow(row) ?: continue
+                if (seenIds.add(parsed.id)) { out.add(parsed); added++ }
+            }
+            if (added == 0) {
+                if (page == 1) return null
+                return if (looksLikeTitlePage(doc)) out else null
+            }
+            page++
+        }
+        return out
+    }
+
+    private fun looksLikeTitlePage(doc: Document): Boolean =
+        doc.selectFirst("script#initial-data") != null || doc.select(".mchap-item").isNotEmpty()
+
+    // v11: normalize one rendered chapter row (.mchap-item) into a Chapter.
+    // Href shape: /title/{slug}/{chapterId}-chapter-{number}.
+    private fun parseDomChapterRow(row: Element): Chapter? {
+        val href = row.selectFirst(".mchap-row__primary")?.attr("href")
+            ?: row.selectFirst("a")?.attr("href")
+            ?: return null
+        val m = Regex("""/(\d+)-chapter-(.+)$""").find(href) ?: return null
+        val id = m.groupValues[1].toIntOrNull() ?: return null
+        val numStr = m.groupValues[2]
+        val num = numStr.toDoubleOrNull()
+            ?: Regex("""(\d+(?:\.\d+)?)""").find(numStr)?.value?.toDoubleOrNull()
+        val title = row.selectFirst(".mchap-row__title")?.text()?.trim().orEmpty()
+        val groupEl = row.selectFirst(".mchap-row__group")
+        var groupName = groupEl?.selectFirst("span")?.text()?.trim()
+            ?: groupEl?.text()?.trim()?.takeIf { it.isNotEmpty() }
+        if (groupName.isNullOrEmpty() && groupEl?.hasClass("is-official") == true) groupName = "Official"
+        return Chapter(
+            id = id,
+            url = href,
+            number = num,
+            name = title,
+            votes = 0,
+            createdAt = "",
+            groupId = null,
+            groupName = groupName,
+            isOfficial = groupName == "Official",
+        )
+    }
+
+    private fun fetchChaptersViaWebView(document: Document, mangaSlug: String): List<Chapter> {
         // Chapters come from the site's own token-signed chapters API, which
         // plain HTTP cannot call. The site's own client code is reused from
         // inside the WebView: its chapters API method is located in the
@@ -635,6 +735,56 @@ class Comix : HttpSource(), ConfigurableSource {
                             });
                             return chain;
                         };
+                        // v11: second discovery path — the site’s chapters client
+                        // also ships as an env-*.js module imported by page module
+                        // scripts, exposing a `chapters` function by name. This
+                        // survives JS-bundle renames that break route matching.
+                        var findChaptersApiViaEnv = function () {
+                            var modules = [];
+                            try {
+                                var tags = document.querySelectorAll('script[type="module"][src]');
+                                for (var mi = 0; mi < tags.length; mi++) modules.push(tags[mi].src);
+                            } catch (e) { return Promise.resolve(null); }
+                            if (modules.length === 0) return Promise.resolve(null);
+                            var seen = {};
+                            var chain = Promise.resolve(null);
+                            modules.forEach(function (scriptUrl) {
+                                chain = chain.then(function (api) {
+                                    if (api) return api;
+                                    return fetch(scriptUrl, { credentials: "same-origin" }).then(function (r) {
+                                        if (!r.ok) return null;
+                                        return r.text();
+                                    }).then(function (source) {
+                                        if (!source) return null;
+                                        var re = /from\s*["']\.\/(env-[^"']+\.js)["']/g;
+                                        var inner = Promise.resolve(null);
+                                        var mm = null;
+                                        while ((mm = re.exec(source)) !== null) {
+                                            (function (rel) {
+                                                if (seen[rel]) return;
+                                                seen[rel] = true;
+                                                inner = inner.then(function (found) {
+                                                    if (found) return found;
+                                                    var envUrl = new URL(rel, scriptUrl).href;
+                                                    return import(envUrl).then(function (mod) {
+                                                        var vals = Object.values(mod);
+                                                        for (var k = 0; k < vals.length; k++) {
+                                                            var cand = vals[k];
+                                                            if (cand && typeof cand === "object" && typeof cand.chapters === "function") {
+                                                                return function (params) { return cand.chapters(mangaId, params); };
+                                                            }
+                                                        }
+                                                        return null;
+                                                    }, function () { return null; });
+                                                });
+                                            })(mm[1]);
+                                        }
+                                        return inner;
+                                    }, function () { return null; });
+                                });
+                            });
+                            return chain;
+                        };
                         var allExports = [];
                         var requestPage = function (target) {
                             var error = "Chapter page " + target + " never arrived";
@@ -658,7 +808,7 @@ class Comix : HttpSource(), ConfigurableSource {
                                         onError();
                                     }
                                 }, PAGE_TIMEOUT_MS);
-                                chaptersApi({ page: target, limit: 20, order: { created_at: "desc" } }).then(function (result) {
+                                chaptersApi({ page: target, limit: 100, order: { created_at: "desc" } }).then(function (result) {
                                     if (winner) return;
                                     winner = true;
                                     clearTimeout(timer);
@@ -696,7 +846,12 @@ class Comix : HttpSource(), ConfigurableSource {
                             if (chaptersApi) {
                                 gotApi(chaptersApi);
                             } else {
-                                findChaptersApi().then(gotApi, function () { gotApi(null); });
+                                findChaptersApi().then(function (api) {
+                                    if (api) { gotApi(api); return; }
+                                    findChaptersApiViaEnv().then(gotApi, function () { gotApi(null); });
+                                }, function () {
+                                    findChaptersApiViaEnv().then(gotApi, function () { gotApi(null); });
+                                });
                             }
                         };
                         return function (holder) {
@@ -786,29 +941,12 @@ class Comix : HttpSource(), ConfigurableSource {
         val listComplete = (listRoot["complete"] as? JsonPrimitive)?.content == "true"
         val listError = (listRoot["error"] as? JsonPrimitive)?.takeUnless { it is JsonNull }?.content
         val allChapters = Chapter.parsePayload(listRoot["chapters"].toString())
-        if (!listComplete && allChapters.isEmpty()) throw Exception(listError ?: "Chapter list is incomplete")
-
-
-        val filteredChapters = if (blacklist.isNotEmpty()) {
-            allChapters.filter { ch ->
-                val scanlatorName = ch.groupName ?: if (ch.isOfficial) "Official" else "Unknown"
-                val nameNormalized = scanlatorName.trim().lowercase()
-                val idStr = ch.groupId?.toString()
-                nameNormalized !in blacklist && idStr !in blacklist
-            }
-        } else {
-            allChapters
-        }
-
-        val finalChapters: List<Chapter> = if (deduplicate) {
-            val chapterMap = LinkedHashMap<String, Chapter>()
-            deduplicateChapters(chapterMap, filteredChapters)
-            chapterMap.values.toList()
-        } else {
-            filteredChapters
-        }
-
-        finalChapters.map { it.toSChapter(mangaSlug) }
+        // v11: never surface a bogus single-chapter list. A walk that ends
+        // incomplete with ~1 chapter hit a wrong holder or a block; failing
+        // loudly keeps Mihon’s cached list and tells the user to retry.
+        if (allChapters.isEmpty()) throw Exception(listError ?: "Chapter list is incomplete")
+        if (!listComplete && allChapters.size <= 1) throw Exception((listError ?: "Only 1 chapter could be read") + " — pull to refresh to retry")
+        return allChapters
     }
 
     override fun chapterListRequest(manga: SManga): Request = throw UnsupportedOperationException()
@@ -1022,6 +1160,38 @@ class Comix : HttpSource(), ConfigurableSource {
                             return emptyResponse
                         }
 
+                        // v11: skip site beacons the extension never needs
+                        if (requestUrl.encodedPath.startsWith("/api/v1/client-errors") ||
+                            requestUrl.encodedPath.startsWith("/api/v1/threads/") ||
+                            requestUrl.encodedPath.startsWith("/assets/uploads/")
+                        ) {
+                            return emptyResponse
+                        }
+
+                        // v11: answer the site human check inside the invisible
+                        // WebView (same approach as the official extension):
+                        // auto-solve rotate/click captchas when enabled,
+                        // otherwise fail loudly so the user can solve it once
+                        // in a visible WebView (cookies are shared).
+                        if (requestUrl.encodedPath == WAF_CHALLENGE_PATH) {
+                            val accept = try {
+                                request.requestHeaders?.get("Accept").orEmpty()
+                            } catch (e: Exception) {
+                                ""
+                            }
+                            if (accept.contains("text/html")) {
+                                timeoutAt.set(System.nanoTime() + DATA_REQUEST_WAIT_SECONDS * 1_000_000_000L)
+                                if (!preferences.solveCaptchas()) {
+                                    payloadResult.failNow("Human check required: open the manga in WebView once to solve it, or turn on Solve captchas in the extension settings")
+                                    return emptyResponse
+                                }
+                                val solver = wafSolverScript()
+                                if (solver.isBlank()) return emptyResponse
+                                val solverPage = "<script>(" + solver + ")(function(m){parent." + interfaceName + ".failPayload(String(m));})</script>"
+                                return WebResourceResponse("text/html", "utf-8", solverPage.byteInputStream())
+                            }
+                        }
+
                         val allowedHost = requestUrl.host.endsWith(baseUrl.toHttpUrl().host) ||
                             requestUrl.host.endsWith(".comix.to") || requestUrl.host == "comix.to" ||
                             requestUrl.host == "comix.ws" || requestUrl.host == "challenges.cloudflare.com"
@@ -1031,6 +1201,10 @@ class Comix : HttpSource(), ConfigurableSource {
                         if (requestUrl.isChapterListRequest()) chapterListPacer.waitForSlot()
                         if (isDataRequest?.invoke(requestUrl) == true) {
                             dataRequests.incrementAndGet()
+                            timeoutAt.set(System.nanoTime() + DATA_REQUEST_WAIT_SECONDS * 1_000_000_000L)
+                        }
+                        // v11: solver activity (/generate, /verify) also keeps the run alive
+                        if (requestUrl.encodedPath.startsWith(WAF_PATH)) {
                             timeoutAt.set(System.nanoTime() + DATA_REQUEST_WAIT_SECONDS * 1_000_000_000L)
                         }
                         return super.shouldInterceptRequest(view, request)
@@ -1124,6 +1298,13 @@ class Comix : HttpSource(), ConfigurableSource {
             }
         }
 
+        fun failNow(message: String) {
+            if (payload == null && error == null) {
+                error = message.ifBlank { "Site rejected the request" }
+            }
+            signal.release()
+        }
+
         @JavascriptInterface
         @Suppress("UNUSED")
         fun failPayload(data: String) {
@@ -1164,6 +1345,13 @@ class Comix : HttpSource(), ConfigurableSource {
 
     // ============================= Settings =============================
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
+        SwitchPreferenceCompat(screen.context).apply {
+            key = PREF_SOLVE_CAPTCHA
+            title = "Solve captchas"
+            summary = "Solve the site Verify-you-are-human check automatically inside chapter and page loads."
+            setDefaultValue(true)
+        }.let(screen::addPreference)
+
         ListPreference(screen.context).apply {
             key = PREF_POSTER_QUALITY
             title = "Thumbnail Quality"
@@ -1255,6 +1443,22 @@ class Comix : HttpSource(), ConfigurableSource {
     }
 
     private fun SharedPreferences.posterQuality() = getString(PREF_POSTER_QUALITY, "large")
+    @Volatile private var cachedWafSolver: String? = null
+
+    // v11: the rotate/click captcha solver (ported from the official
+    // extension solve_captcha.js asset). Served in place of the "@waf"
+    // challenge frame so human checks can pass headlessly.
+    private fun wafSolverScript(): String {
+        cachedWafSolver?.let { return it }
+        val text = runCatching {
+            applicationContext.assets.open("solve_captcha.js").bufferedReader().use { it.readText() }
+        }.getOrNull().orEmpty()
+        cachedWafSolver = text
+        return text
+    }
+
+    private fun SharedPreferences.solveCaptchas() = getBoolean(PREF_SOLVE_CAPTCHA, true)
+
     private fun SharedPreferences.deduplicateChapters() = getBoolean(DEDUPLICATE_CHAPTERS, false)
     private fun SharedPreferences.scanlatorBlacklist(): Set<String> = getString(PREF_SCANLATOR_BLACKLIST, "")?.split(",")?.map { it.trim().lowercase() }?.filter { it.isNotEmpty() }?.toSet() ?: emptySet()
     private fun SharedPreferences.alternativeNamesInDescription() = getBoolean(ALTERNATIVE_NAMES_IN_DESCRIPTION, false)
@@ -1288,11 +1492,14 @@ class Comix : HttpSource(), ConfigurableSource {
         private const val WEBVIEW_START_TIMEOUT_SECONDS = 120L
         private const val WEBVIEW_TIMEOUT_SECONDS = 90L
         private const val DATA_REQUEST_WAIT_SECONDS = 30L
-        private const val SCRIPT_RETRY_INTERVAL_MS = 10L
+        private const val SCRIPT_RETRY_INTERVAL_MS = 100L
         private const val MAX_CHAPTER_PAGES = 1000
         private val chapterListPacer = RequestPacer(intervalMs = 2500)
         private val sitePacer = RequestPacer(intervalMs = 500)
         private val imagePacer = RequestPacer(intervalMs = 200)
+        private const val PREF_SOLVE_CAPTCHA = "pref_solve_captcha"
+        private const val WAF_CHALLENGE_PATH = "/@waf/challenge"
+        private const val WAF_PATH = "/@waf/"
         private const val ALT_HOSTS_FRAGMENT = "alt="
         private val SERVER_ERROR_CODES = setOf(502, 503, 522, 523)
         private const val WEBVIEW_WIDTH = 1080
