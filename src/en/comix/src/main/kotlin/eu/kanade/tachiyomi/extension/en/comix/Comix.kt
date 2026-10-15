@@ -64,6 +64,8 @@ import java.util.Calendar
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 class Comix : HttpSource(), ConfigurableSource {
@@ -90,6 +92,10 @@ class Comix : HttpSource(), ConfigurableSource {
     }
 
     override val client = network.client.newBuilder()
+        .addInterceptor { chain ->
+            if (chain.request().url.host == baseUrlHost) sitePacer.waitForSlot() else imagePacer.waitForSlot()
+            chain.proceed(chain.request())
+        }
         .addInterceptor(Descrambler.interceptor)
         .addInterceptor(::altHostFallback)
         .addInterceptor { chain ->
@@ -118,6 +124,35 @@ class Comix : HttpSource(), ConfigurableSource {
         .build()
 
     private val baseUrlHost get() = baseUrl.toHttpUrl().host
+
+    // The site's X-Rt flag, raised after a few API calls without user input
+    // and blocked on by the server; held at zero inside the WebView.
+    private val X_RT_OVERRIDE_SCRIPT = """
+        (function () {
+            try {
+                var origSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+                XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
+                    if (String(name).toLowerCase() === "x-rt" && value === "1") value = "0";
+                    return origSetRequestHeader.call(this, name, value);
+                };
+            } catch (e) {}
+        })();
+    """.trimIndent()
+
+    // Minimum spacing between requests; Comix blocks clients that fetch too fast
+    private class RequestPacer(private val intervalMs: Long) {
+        private var nextNanos = 0L
+
+        fun waitForSlot() {
+            val waitNanos = synchronized(this) {
+                val now = System.nanoTime()
+                val start = maxOf(now, nextNanos)
+                nextNanos = start + intervalMs * 1_000_000
+                start - now
+            }
+            if (waitNanos > 0) Thread.sleep(waitNanos / 1_000_000)
+        }
+    }
 
     // Retry failed images on alt hosts, like the site's reader
     private fun altHostFallback(chain: Interceptor.Chain): Response {
@@ -496,92 +531,230 @@ class Comix : HttpSource(), ConfigurableSource {
         val mangaSlug = manga.url.removePrefix("/")
 
         val document = client.newCall(GET(getMangaUrl(manga), headers)).execute().asJsoup()
-        
-        // SUPERFAST OPTIMIZATION: Extract chapters natively if pagination is not needed
-        val initialData = document.selectFirst("script#initial-data")?.data()
-        var fastPathChapters: List<Chapter>? = null
-        
-        if (initialData != null) {
-            runCatching {
-                val root = Json.parseToJsonElement(initialData) as? JsonObject ?: return@runCatching
-                val queries = root["queries"] as? JsonObject ?: return@runCatching
-                queries.values.forEach { value ->
-                    val items = Chapter.parsePayload(value.toString())
-                    if (items.isNotEmpty() && items.first().id != 0) {
-                        if (!Chapter.queryHasNextPage(value)) {
-                            fastPathChapters = items // Skipped the WebView entirely!
-                        }
-                    }
-                }
-            }
-        }
 
-        val allChapters = fastPathChapters ?: run {
-            // The title page loads chapters through the site's own paginated
-            // /api/v1/manga/{hid}/chapters API (token-signed in page JS, so plain
-            // HTTP cannot call it). Hook the decoded API responses exactly like
-            // the official extension: capture every holder the site decodes that
-            // carries chapter items, and drive the site's own ?page= state until
-            // the last page instead of clicking DOM buttons.
-            val chapterPath = JSONObject.quote("/title/" + mangaSlug.substringBefore('-') + "-")
-            val payload = runInWebView(
-                document = document,
-                buildScript = { interfaceName ->
-                    """
-                    (function () {
-                        if (window.__comixChaptersInstalled) return null;
-                        window.__comixChaptersInstalled = true;
-                        var pass = function (text) { window.$interfaceName.passPayload(text); };
-                        var fail = function (text) { window.$interfaceName.failPayload(String(text)); };
-                        var drive = (function (latestChapterId, chapterPath, maxPages, pageDelayMs, passFn, failFn) {
-                            var chapters = [];
-                            var isChapter = function (item) {
-                                return item &&
-                                    typeof item.id === "number" &&
-                                    typeof item.number === "number" &&
-                                    typeof item.url === "string" &&
-                                    item.url.indexOf(chapterPath) !== -1;
+        // Chapters come from the site's own token-signed chapters API, which
+        // plain HTTP cannot call. The site's own client code is reused from
+        // inside the WebView: its chapters API method is located in the
+        // site's own JS chunks and paged newest-uploads-first until the last
+        // page (same approach as the official extension).
+        val mangaId = mangaSlug.substringBefore('-')
+        val mangaIdJson = JSONObject.quote(mangaId)
+        val chapterPath = JSONObject.quote("/title/$mangaId-")
+        val payload = runInWebView(
+            document = document,
+            initializationScript = X_RT_OVERRIDE_SCRIPT,
+            isDataRequest = { it.isChapterListRequest() },
+            buildScript = { interfaceName ->
+                """
+                (function () {
+                    if (window.__comixChaptersInstalled) return null;
+                    window.__comixChaptersInstalled = true;
+                    var pass = function (text) { window.$interfaceName.passPayload(text); };
+                    var fail = function (text) { window.$interfaceName.failPayload(String(text)); };
+                    var drive = (function (knownIds, mangaId, chapterPath, maxPages, passFn, failFn) {
+                        var known = {};
+                        knownIds.forEach(function (id) { known[id] = true; });
+                        var chapters = [];
+                        var isChapter = function (item) {
+                            return item &&
+                                typeof item.id === "number" &&
+                                typeof item.number === "number" &&
+                                typeof item.url === "string" &&
+                                item.url.indexOf(chapterPath) !== -1;
+                        };
+                        var isRoute = function (route) {
+                            return typeof route === "function" &&
+                                /^\(?[\w$]+\)?=>`\/manga\/\$\{[\w$]+\}\/chapters`$/.test(String(route));
+                        };
+                        var PAGE_TIMEOUT_MS = 25000;
+                        var page = 1;
+                        var siteLoaded = false;
+                        var expecting = false;
+                        var returnedNumbers = null;
+                        var done = false;
+                        var chaptersApi = null;
+                        var finish = function (complete, error) {
+                            done = true;
+                            passFn(JSON.stringify({ chapters: chapters, complete: complete, error: error }));
+                        };
+                        var matchChaptersApi = function (exports) {
+                            var found = null;
+                            exports.forEach(function (value) {
+                                var routesList = [];
+                                if (value && typeof value === "object") {
+                                    Object.values(value).forEach(function (v) { routesList.push(v); });
+                                }
+                                routesList.forEach(function (routes) {
+                                    if (found || !routes || typeof routes !== "object") return;
+                                    var routeKeys = Object.keys(routes);
+                                    var key = null;
+                                    routeKeys.forEach(function (name) {
+                                        if (key === null && isRoute(routes[name])) key = name;
+                                    });
+                                    if (!key) return;
+                                    exports.forEach(function (api) {
+                                        if (found || !api || typeof api !== "object" || api === routes) return;
+                                        if (typeof api[key] !== "function") return;
+                                        var allKeys = routeKeys.every(function (name) { return name in api; });
+                                        if (!allKeys || String(api[key]).indexOf("params") === -1) return;
+                                        found = function (params) { return api[key](mangaId, params); };
+                                    });
+                                });
+                            });
+                            return found;
+                        };
+                        var findChaptersApi = function () {
+                            var scripts = [];
+                            try {
+                                performance.getEntriesByType("resource").forEach(function (entry) {
+                                    if (/\/assets\/.*\.js$/.test(entry.name)) scripts.push(entry.name);
+                                });
+                            } catch (e) { return Promise.resolve(null); }
+                            var entry = null;
+                            scripts.forEach(function (url) {
+                                if (entry === null && /\/main-[^/]+\.js$/.test(url)) entry = url;
+                            });
+                            if (!entry) return Promise.resolve(null);
+                            var directory = entry.slice(0, entry.lastIndexOf("/") + 1);
+                            var seen = {};
+                            var urls = scripts.filter(function (url) {
+                                if (url.indexOf(directory) !== 0 || seen[url]) return false;
+                                seen[url] = true;
+                                return true;
+                            });
+                            var chain = Promise.resolve(null);
+                            urls.forEach(function (url) {
+                                chain = chain.then(function (api) {
+                                    if (api) return api;
+                                    return import(url).then(function (mod) {
+                                        var exps = Object.values(mod);
+                                        exps.forEach(function (e) { allExports.push(e); });
+                                        return matchChaptersApi(allExports);
+                                    }, function () { return null; });
+                                });
+                            });
+                            return chain;
+                        };
+                        var allExports = [];
+                        var requestPage = function (target) {
+                            var error = "Chapter page " + target + " never arrived";
+                            var onError = function () {
+                                setTimeout(function () {
+                                    if (!done && page === target) finish(false, error);
+                                }, 1000);
                             };
-                            var page = 1;
-                            var done = false;
-                            return function (holder) {
-                                var items = holder.items;
-                                var meta = holder.meta;
-                                if (done || !meta || !Array.isArray(items) || !items.every(isChapter)) return;
-                                if (items.length === 0 && meta.total !== 0) return;
-                                if (typeof meta.page !== "number" || typeof meta.lastPage !== "number") {
+                            var gotApi = function (api) {
+                                chaptersApi = api;
+                                if (!chaptersApi) {
+                                    finish(false, "Could not find the site's chapters API");
+                                    return;
+                                }
+                                expecting = true;
+                                var winner = false;
+                                var timer = setTimeout(function () {
+                                    if (!winner) {
+                                        winner = true;
+                                        error = "Chapter page " + target + " timed out";
+                                        onError();
+                                    }
+                                }, PAGE_TIMEOUT_MS);
+                                chaptersApi({ page: target, limit: 20, order: { created_at: "desc" } }).then(function (result) {
+                                    if (winner) return;
+                                    winner = true;
+                                    clearTimeout(timer);
+                                    var arrays = [];
+                                    if (Array.isArray(result)) {
+                                        arrays.push(result);
+                                    } else if (result && typeof result === "object") {
+                                        Object.values(result).forEach(function (v) {
+                                            if (Array.isArray(v)) arrays.push(v);
+                                        });
+                                    }
+                                    returnedNumbers = arrays.map(function (returned) {
+                                        var values = {};
+                                        returned.forEach(function (item) {
+                                            if (item && typeof item === "object") {
+                                                Object.values(item).forEach(function (value) {
+                                                    if (typeof value === "number") values[value] = true;
+                                                });
+                                            }
+                                        });
+                                        return { count: returned.length, values: values };
+                                    });
+                                    error = "Chapter page " + target + " came back in a shape the extension does not recognise";
+                                }, function (e) {
+                                    if (winner) return;
+                                    winner = true;
+                                    clearTimeout(timer);
+                                    var status = e && e.response && e.response.status;
+                                    error = status === 502
+                                        ? "Comix blocked chapter page " + target + " (HTTP 502). Try again later"
+                                        : "Chapter page " + target + " failed: " + (status ? "HTTP " + status : (e && e.message) || e);
+                                    onError();
+                                });
+                            };
+                            if (chaptersApi) {
+                                gotApi(chaptersApi);
+                            } else {
+                                findChaptersApi().then(gotApi, function () { gotApi(null); });
+                            }
+                        };
+                        return function (holder) {
+                            var items = holder.items;
+                            var meta = holder.meta;
+                            if (done || !meta || !Array.isArray(items) || !items.every(isChapter)) return;
+                            if (items.length === 0 && meta.total !== 0) return;
+                            if (typeof meta.page !== "number" || typeof meta.lastPage !== "number") {
+                                if (chapters.length > 0) {
+                                    finish(false, "Chapter list has no page numbers");
+                                } else {
                                     done = true;
                                     failFn("Chapter list has no page numbers");
-                                    return;
                                 }
-                                if (meta.page !== page) return;
-                                chapters.push.apply(chapters, items);
-                                if (items.some(function (item) { return item.id === latestChapterId; })) {
-                                    done = true;
-                                    passFn(JSON.stringify(chapters));
-                                    return;
+                                return;
+                            }
+                            if (!siteLoaded) {
+                                siteLoaded = true;
+                                requestPage(page);
+                                return;
+                            }
+                            if (!expecting || meta.page !== page) return;
+                            var matched = false;
+                            if (returnedNumbers) {
+                                returnedNumbers.forEach(function (returned) {
+                                    if (matched || returned.count !== items.length) return;
+                                    var all = true;
+                                    items.forEach(function (item) {
+                                        if (!returned.values[item.id]) all = false;
+                                    });
+                                    if (all) matched = true;
+                                });
+                            }
+                            if (!matched) return;
+                            expecting = false;
+                            returnedNumbers = null;
+                            chapters.push.apply(chapters, items);
+                            var hasKnown = false;
+                            items.forEach(function (item) { if (known[item.id]) hasKnown = true; });
+                            if (hasKnown) {
+                                finish(true);
+                                return;
+                            }
+                            if (!meta.hasNext || page >= Math.min(meta.lastPage, maxPages)) {
+                                var seen = {};
+                                chapters.forEach(function (item) { seen[item.id] = true; });
+                                var count = Object.keys(seen).length;
+                                if (count === meta.total) {
+                                    finish(true);
+                                } else {
+                                    finish(false, "Got " + count + " of " + meta.total + " chapters");
                                 }
-                                if (!meta.hasNext || page >= Math.min(meta.lastPage, maxPages)) {
-                                    done = true;
-                                    var seen = {};
-                                    chapters.forEach(function (item) { seen[item.id] = true; });
-                                    var count = Object.keys(seen).length;
-                                    if (count === meta.total) {
-                                        passFn(JSON.stringify(chapters));
-                                    } else {
-                                        failFn("Got " + count + " of " + meta.total + " chapters");
-                                    }
-                                    return;
-                                }
-                                page++;
-                                setTimeout(function () {
-                                    var url = new URL(location.href);
-                                    url.searchParams.set("page", String(page));
-                                    history.pushState(history.state, "", url);
-                                    dispatchEvent(new PopStateEvent("popstate", { state: history.state }));
-                                }, pageDelayMs);
-                            };
-                        })(null, $chapterPath, $MAX_CHAPTER_PAGES, $CHAPTER_PAGE_DELAY_MS, pass, fail);
+                                return;
+                            }
+                            page++;
+                            requestPage(page);
+                        };
+                    })([], $mangaIdJson, $chapterPath, $MAX_CHAPTER_PAGES, pass, fail);
                         var capture = function (holder) {
                             setTimeout(function () { try { drive(holder); } catch (e) {} }, 0);
                         };
@@ -603,22 +776,18 @@ class Comix : HttpSource(), ConfigurableSource {
                             if (key === "items" && descriptor && "value" in descriptor) capture(target);
                             return result;
                         };
-                        try {
-                            var rawEl = document.querySelector('script#initial-data');
-                            var raw = rawEl && rawEl.textContent;
-                            var queries = raw && JSON.parse(raw).queries;
-                            if (queries) Object.values(queries).forEach(function (q) {
-                                try { drive(q); } catch (e) {}
-                                try { if (q && q.result) drive(q.result); } catch (e) {}
-                            });
-                        } catch (e) {}
                         return null;
                     })();
                     """.trimIndent()
                 },
             )
-            Chapter.parsePayload(payload)
-        }
+        val listRoot = runCatching { Json.parseToJsonElement(payload) as? JsonObject }.getOrNull()
+            ?: throw Exception("Could not read chapter list from page")
+        val listComplete = (listRoot["complete"] as? JsonPrimitive)?.content == "true"
+        val listError = (listRoot["error"] as? JsonPrimitive)?.takeUnless { it is JsonNull }?.content
+        val allChapters = Chapter.parsePayload(listRoot["chapters"].toString())
+        if (!listComplete && allChapters.isEmpty()) throw Exception(listError ?: "Chapter list is incomplete")
+
 
         val filteredChapters = if (blacklist.isNotEmpty()) {
             allChapters.filter { ch ->
@@ -692,6 +861,8 @@ class Comix : HttpSource(), ConfigurableSource {
             // holder with page-like items (no meta) wins.
             val payload = runInWebView(
                 document = document,
+                initializationScript = X_RT_OVERRIDE_SCRIPT,
+                isDataRequest = { it.isChapterPagesRequest() },
                 buildScript = { interfaceName ->
                     """
                     (function () {
@@ -789,6 +960,7 @@ class Comix : HttpSource(), ConfigurableSource {
     private fun runInWebView(
         document: Document,
         initializationScript: String? = null,
+        isDataRequest: ((HttpUrl) -> Boolean)? = null,
         buildScript: (interfaceName: String) -> String,
     ): String {
         val handler = Handler(Looper.getMainLooper())
@@ -800,6 +972,8 @@ class Comix : HttpSource(), ConfigurableSource {
         val active = AtomicBoolean(true)
         val started = Semaphore(0)
         val startupError = AtomicReference<Throwable?>()
+        val timeoutAt = AtomicLong(System.nanoTime() + WEBVIEW_TIMEOUT_SECONDS * 1_000_000_000L)
+        val dataRequests = AtomicInteger(0)
 
         var webView: WebView? = null
         var injectScript: Runnable? = null
@@ -853,6 +1027,12 @@ class Comix : HttpSource(), ConfigurableSource {
                             requestUrl.host == "comix.ws" || requestUrl.host == "challenges.cloudflare.com"
                             
                         if (!allowedHost) return emptyResponse
+                        // Comix blocks clients that page chapter lists too fast
+                        if (requestUrl.isChapterListRequest()) chapterListPacer.waitForSlot()
+                        if (isDataRequest?.invoke(requestUrl) == true) {
+                            dataRequests.incrementAndGet()
+                            timeoutAt.set(System.nanoTime() + DATA_REQUEST_WAIT_SECONDS * 1_000_000_000L)
+                        }
                         return super.shouldInterceptRequest(view, request)
                     }
 
@@ -900,7 +1080,11 @@ class Comix : HttpSource(), ConfigurableSource {
         val completed = try {
             if (!started.tryAcquire(WEBVIEW_START_TIMEOUT_SECONDS, TimeUnit.SECONDS)) throw Exception("Timed out starting WebView (url=$lastUrl)")
             startupError.get()?.let { throw Exception("Failed to start WebView (url=$lastUrl)", it) }
-            payloadResult.await(WEBVIEW_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            while (payloadResult.payload == null && payloadResult.error == null) {
+                if (System.nanoTime() >= timeoutAt.get()) break
+                payloadResult.awaitSlice(1000)
+            }
+            payloadResult.payload != null || payloadResult.error != null
         } finally {
             active.set(false)
             handler.post {
@@ -912,7 +1096,14 @@ class Comix : HttpSource(), ConfigurableSource {
             }
         }
 
-        if (!completed) throw Exception("Timed out waiting for WebView payload (url=$lastUrl)")
+        if (!completed) {
+            val message = when {
+                isDataRequest == null -> "Timed out waiting for WebView payload (url=$lastUrl)"
+                dataRequests.get() == 0 -> "Site never requested the data (url=$lastUrl)"
+                else -> "Nothing read from ${dataRequests.get()} site requests (url=$lastUrl)"
+            }
+            throw Exception(message)
+        }
         payloadResult.error?.let { throw Exception(it) }
         return payloadResult.payload ?: throw Exception("Failed to capture WebView payload")
     }
@@ -954,7 +1145,22 @@ class Comix : HttpSource(), ConfigurableSource {
             }
             return true
         }
+
+        fun awaitSlice(millis: Long) {
+            runCatching { signal.tryAcquire(millis, TimeUnit.MILLISECONDS) }
+        }
     }
+
+    private fun HttpUrl.isChapterPagesRequest(): Boolean = pathSegments.size == 4 &&
+        pathSegments[0] == "api" &&
+        pathSegments[1] == "v1" &&
+        pathSegments[2] == "chapters"
+
+    private fun HttpUrl.isChapterListRequest(): Boolean = pathSegments.size == 5 &&
+        pathSegments[0] == "api" &&
+        pathSegments[1] == "v1" &&
+        pathSegments[2] == "manga" &&
+        pathSegments[4] == "chapters"
 
     // ============================= Settings =============================
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
@@ -1081,9 +1287,12 @@ class Comix : HttpSource(), ConfigurableSource {
         private const val DEFAULT_CONTENT_RATING = "suggestive"
         private const val WEBVIEW_START_TIMEOUT_SECONDS = 120L
         private const val WEBVIEW_TIMEOUT_SECONDS = 90L
+        private const val DATA_REQUEST_WAIT_SECONDS = 30L
         private const val SCRIPT_RETRY_INTERVAL_MS = 10L
         private const val MAX_CHAPTER_PAGES = 1000
-        private const val CHAPTER_PAGE_DELAY_MS = 500
+        private val chapterListPacer = RequestPacer(intervalMs = 2500)
+        private val sitePacer = RequestPacer(intervalMs = 500)
+        private val imagePacer = RequestPacer(intervalMs = 200)
         private const val ALT_HOSTS_FRAGMENT = "alt="
         private val SERVER_ERROR_CODES = setOf(502, 503, 522, 523)
         private const val WEBVIEW_WIDTH = 1080
@@ -1521,22 +1730,7 @@ class Chapter(
             }
         }.getOrDefault(emptyList())
 
-        /** Mirrors the old Meta/Pagination.hasNextPage() for raw query JSON. */
-        fun queryHasNextPage(queryEl: JsonElement): Boolean {
-            val obj = queryEl as? JsonObject ?: return false
-            val result = (obj["result"] as? JsonObject) ?: obj
-            val meta = (result["meta"] ?: result["pagination"]) as? JsonObject ?: return false
-            fun JsonObject.intOf(key: String, alt: String, default: Int): Int =
-                (this[key] as? JsonPrimitive)?.content?.toIntOrNull()
-                    ?: (this[alt] as? JsonPrimitive)?.content?.toIntOrNull() ?: default
-            (meta["hasNext"] as? JsonPrimitive)?.content?.let {
-                return it.equals("true", ignoreCase = true)
             }
-            val page = meta.intOf("page", "page", 1)
-            val last = maxOf(meta.intOf("lastPage", "last_page", 1), meta.intOf("actualLastPage", "actual_last_page", 1))
-            return page < last
-        }
-    }
     fun toSChapter(mangaSlug: String) = SChapter.create().apply {
         val num = this@Chapter.number
         url = this@Chapter.url.indexOf("/title/").let { index ->
