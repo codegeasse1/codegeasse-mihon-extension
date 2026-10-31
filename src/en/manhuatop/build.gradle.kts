@@ -6,7 +6,7 @@ plugins {
 // --- Extension metadata -----------------------------------------------
 val extName = "ManhuaTop"
 val extClass = ".ManhuaTop"
-val extVersionCode = 2
+val extVersionCode = 3
 val isNsfw = false
 // ----------------------------------------------------------------------
 
