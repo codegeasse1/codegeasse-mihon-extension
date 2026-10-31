@@ -207,14 +207,14 @@ class ManhuaTop : HttpSource() {
                 else -> SManga.UNKNOWN
             }
             val info = listOfNotNull(
-                document.selectFirst(".detail-stats .card-rating")?.textOrNull()?.let { "★ $it" },
-                document.selectFirst(".detail-stats span[title\$=views]")?.textOrNull(),
+                document.selectFirst(".detail-stats .card-rating")?.text()?.let { "★ $it" },
+                document.selectFirst(".detail-stats span[title\$=views]")?.text(),
                 document.metadata("Release").firstOrNull(),
             ).joinToString(" · ").ifEmpty { null }
             val synopsis = document.selectFirst(".rich-content.synopsis")?.wholeText()
                 ?.lines()?.joinToString("\n") { it.trim() }?.replace(BLANK_LINES, "\n\n")
                 ?.trim()?.ifEmpty { null }
-            val altTitles = document.selectFirst("p.alternative-title")?.textOrNull()
+            val altTitles = document.selectFirst("p.alternative-title")?.text()
                 ?.split(" / ")?.joinToString("\n") { "- $it" }?.let { "**Alternative titles:**\n$it" }
             description = listOfNotNull(info, synopsis, altTitles).joinToString("\n\n").ifEmpty { null }
         }
@@ -251,10 +251,19 @@ class ManhuaTop : HttpSource() {
                 .addQueryParameter("resource", "chapters")
                 .addQueryParameter("path", series.encodedPath + "?" + series.encodedQuery!!)
                 .build()
-            val body = client.newCall(GET(url, headers)).execute().use { resp ->
-                if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
-                resp.body?.string().orEmpty()
-            }
+            // A later page that refuses is the end of the list, not a reason
+            // to throw the chapters already collected away.
+            val body = try {
+                client.newCall(GET(url, headers)).execute().use { resp ->
+                    if (!resp.isSuccessful) {
+                        if (page > 1) return@use null
+                        throw IOException("HTTP ${resp.code}")
+                    }
+                    resp.body?.string().orEmpty()
+                }
+            } catch (e: IOException) {
+                if (page > 1) break else throw e
+            } ?: break
             val json = JSONObject(body)
             if (total < 0) total = json.optInt("total", -1)
             val items = json.optJSONArray("items") ?: break
@@ -307,10 +316,19 @@ class ManhuaTop : HttpSource() {
                     content.encodedPath + (content.encodedQuery?.let { "?$it" } ?: ""),
                 )
                 .build()
-            val body = client.newCall(GET(url, headers)).execute().use { resp ->
-                if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
-                resp.body?.string().orEmpty()
-            }
+            // A later page that refuses is the end of the chapter, not a
+            // reason to throw the pages already collected away.
+            val body = try {
+                client.newCall(GET(url, headers)).execute().use { resp ->
+                    if (!resp.isSuccessful) {
+                        if (page > 1) return@use null
+                        throw IOException("HTTP ${resp.code}")
+                    }
+                    resp.body?.string().orEmpty()
+                }
+            } catch (e: IOException) {
+                if (page > 1) break else throw e
+            } ?: break
             val images = JSONObject(body).optJSONArray("images") ?: break
             if (images.length() == 0) break
             for (i in 0 until images.length()) {
